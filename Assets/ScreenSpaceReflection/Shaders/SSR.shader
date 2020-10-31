@@ -38,6 +38,7 @@
     float _RayLenCoeff;
     float _Thickness;
     float _ReflectionRate;
+    float _BaseRaise;
 
     float4x4 _ViewProj;
     float4x4 _InvViewProj;
@@ -95,30 +96,41 @@
             float4 rayScreen = mul(_ViewProj, float4(ray, 1.0));
             float2 rayUV = rayScreen.xy / rayScreen.w * 0.5f + 0.5f;
             float rayDepth = ComputeDepth(rayScreen);
-            float worldDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV);
+            float worldDepth = (lod ==0) ? SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV) : tex2Dlod(_CameraDepthTexture, float4(rayUV, 0, lod)) + _BaseRaise * lod;
+
+            if (max(abs(rayUV.x - 0.5), abs(rayUV.y - 0.5)) > 0.5) break;
+
 
             if (rayDepth < worldDepth) {
-                if (rayDepth + _Thickness > worldDepth) {
-                    
-                    float sign = -1.0;
-                    for (int m = 1; m <= 8; ++m) {
-                        ray += sign * pow(0.5, m) * step;
-                        rayScreen = mul(_ViewProj, float4(ray, 1.0));
-                        rayUV = rayScreen.xy / rayScreen.w * 0.5f + 0.5f;
-                        rayDepth = ComputeDepth(rayScreen);
-                        worldDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV);
-                        sign = (rayDepth < worldDepth) ? -1 : 1;
+
+                if (lod == 0) {
+                    if (rayDepth + _Thickness > worldDepth) {
+                        float sign = -1.0;
+                        for (int m = 1; m <= 8; ++m) {
+                            ray += sign * pow(0.5, m) * step;
+                            rayScreen = mul(_ViewProj, float4(ray, 1.0));
+                            rayUV = rayScreen.xy / rayScreen.w * 0.5f + 0.5f;
+                            rayDepth = ComputeDepth(rayScreen);
+                            worldDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV);
+                            sign = (rayDepth < worldDepth) ? -1 : 1;
+                        }
+                        refCol = tex2D(_MainTex, rayUV);
                     }
-                    refCol = tex2D(_MainTex, rayUV);
+                    break;
                 }
-                break;
+                else {
+                    ray -= step;
+                    lod--;
+                }
             }
+            else if (n <= _MaxLOD) {
+                lod++;
+            }
+
             calc = n;
 
             if (length(ray - worldPos) > 15.0) break;
         }
-
-
 
         if (_ViewMode == 1) return float4(normal, 1);
         if (_ViewMode == 2) return float4(ref, 1);

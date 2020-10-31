@@ -626,13 +626,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e29234745e7eac4b85ccd22579e24f2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  shader: {fileID: 4800000, guid: a8924618b74f85843b69fc074cc10037, type: 3}
-  viewMode: 0
+  shader: {fileID: 4800000, guid: 472a23a09a02ee64ead2c3e9db742bf8, type: 3}
+  viewMode: 3
   maxLOD: 3
   maxLoop: 150
   thickness: 0.003
   rayLenCoef: 0.052
   reflectionRate: 0.5
+  baseRaise: 0.002
   blurIter: 3
   blurThreshold: 0.01
 --- !u!124 &1481628775
@@ -694,7 +695,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1481628773}
   m_LocalRotation: {x: -0.043619405, y: 0, z: 0, w: 0.9990483}
-  m_LocalPosition: {x: -0.79, y: 0.1, z: -3.27}
+  m_LocalPosition: {x: -0.79, y: 0.1, z: -4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}

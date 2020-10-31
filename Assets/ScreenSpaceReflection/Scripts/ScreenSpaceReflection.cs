@@ -18,6 +18,7 @@ namespace ScreenSpaceReflection {
         [SerializeField, Range(0.001f, 0.01f)] float thickness = 0.003f;
         [SerializeField, Range(0.01f, 0.1f)] float rayLenCoef = 0.05f;
         [SerializeField, Range(0f, 1f)] float reflectionRate = 0.5f;
+        [SerializeField, Range(0.001f, 0.01f)] float baseRaise = 0.002f;
 
         [Header("Blur")]
         [SerializeField] int blurIter = 3;
@@ -69,12 +70,16 @@ namespace ScreenSpaceReflection {
             var viewProj = proj * view;                                         // world  -> screen
             mat.SetMatrix("_ViewProj", viewProj);
             mat.SetMatrix("_InvViewProj", viewProj.inverse);
+
             mat.SetInt("_ViewMode", (int)viewMode);
             mat.SetInt("_MaxLoop", maxLoop);
             mat.SetInt("_MaxLOD", maxLOD);
+
+            mat.SetFloat("_BaseRaise", baseRaise);
             mat.SetFloat("_Thickness", thickness);
             mat.SetFloat("_RayLenCoeff", rayLenCoef);
             mat.SetFloat("_ReflectionRate", reflectionRate);
+
             mat.SetTexture("_CameraDepthMipmap", dpt);
 
             var reflectionRT = RenderTexture.GetTemporary(width, height, 24, RenderTextureFormat.ARGB32);
