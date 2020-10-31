@@ -1,18 +1,24 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class MipMap : MonoBehaviour
-{
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
+namespace ScreenSpaceReflection {
+    public class MipMap : MonoBehaviour {
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        [SerializeField] Shader shader;
+        [SerializeField] int lod;
+
+        Material mat;
+        RenderTexture rt;
+
+        void Start() {
+            mat = new Material(shader);
+            rt = new RenderTexture(Screen.width, Screen.height, 24);
+            rt.useMipMap = true;
+        }
+
+        void OnRenderImage(RenderTexture src, RenderTexture dst) {
+            mat.SetInt("_LOD", lod);
+            Graphics.Blit(src, rt);
+            Graphics.Blit(rt, dst, mat);
+        }
     }
 }
