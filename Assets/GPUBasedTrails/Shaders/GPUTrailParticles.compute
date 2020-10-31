@@ -1,0 +1,48 @@
+﻿#pragma kernel Update
+#pragma kernel WriteToInput
+#define Thread [numthreads(256,1,1)]
+
+#include "GPUTrails.cginc"
+#include "noise4D.cginc"
+
+RWStructuredBuffer<Particle> _ParticleBufferWrite;
+StructuredBuffer<Particle> _ParticleBufferRead;
+RWStructuredBuffer<Input> _InputBuffer;
+
+uint _ParticleNum;
+float _Time;
+float _TimeScale;
+float _PositionScale;
+float _NoiseScale;
+
+bool _InputMouse;
+float _InputMouseForce;
+float2 _InputMousePosition;
+
+Thread
+void Update(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+	if (idx >= _ParticleNum) return;
+
+	Particle particle = _ParticleBufferWrite[idx];
+	float3 curl = curlNoise(float4(particle.pos * _PositionScale, _Time * _TimeScale));
+
+	if (_InputMouse) {
+		particle.pos += (float3(_InputMousePosition, 0)- particle.pos) * _InputMouseForce;
+	}
+
+	particle.pos += curl * _NoiseScale;
+	_ParticleBufferWrite[idx] = particle;
+}
+
+Thread
+void WriteToInput(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+	if (idx >= _ParticleNum) return;
+
+	Input input;
+	input.pos = _ParticleBufferRead[idx].pos;
+	_InputBuffer[idx] = input;
+}

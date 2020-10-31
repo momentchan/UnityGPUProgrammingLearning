@@ -1,0 +1,37 @@
+﻿#pragma kernel CalcInput
+#define Thread [numthreads(256,1,1)]
+
+#include "GPUTrails.cginc"
+
+float _Time;
+uint _TrailNum;
+
+RWStructuredBuffer<Trail> _TrailBuffer;
+RWStructuredBuffer<Node> _NodeBuffer;
+StructuredBuffer<Input> _InputBuffer;
+
+Thread
+void CalcInput(uint3 id : SV_DispatchThreadID)
+{
+	uint trailIdx = id.x;
+	if (trailIdx >= _TrailNum) return;
+
+	Trail trail = _TrailBuffer[trailIdx];
+	Input input = _InputBuffer[trailIdx];
+
+	int currentNodeIdx = trail.currentNodeIdx;
+
+	Node node;
+	node.time = _Time;
+	node.pos = input.pos;
+
+	currentNodeIdx++;
+	currentNodeIdx %= _NodeNumPerTrail;
+
+	// write new node
+	_NodeBuffer[ToNodeBufferIndex(trailIdx, currentNodeIdx)] = node;
+
+	// update trail
+	trail.currentNodeIdx = currentNodeIdx;
+	_TrailBuffer[trailIdx] = trail;
+}

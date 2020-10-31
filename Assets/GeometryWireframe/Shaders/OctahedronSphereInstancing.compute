@@ -1,0 +1,18 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel Update
+#include "OctahedronSphereData.cginc"
+#include "../../Common/Libs/noise.cginc"
+#define THREAD [numthreads(8,1,1)]
+
+RWStructuredBuffer<OctahedronSphere> _ParticleBuffer;
+float _Time;
+float _NoiseScale;
+float _NoiseSpeed;
+int _SubDivisionNum;
+
+THREAD
+void Update (uint3 id : SV_DispatchThreadID)
+{
+	float3 pos = _ParticleBuffer[id.x].position * _NoiseScale;
+	_ParticleBuffer[id.x].level = clamp(ceil(abs(snoise(pos + float3(_Time, _Time, _Time) * _NoiseSpeed) * (float)_SubDivisionNum)), 1, _SubDivisionNum);
+}

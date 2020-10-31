@@ -1,0 +1,79 @@
+﻿#pragma kernel Emit
+#pragma kernel Update
+#define EPSILON 1e-3
+
+#define THREAD [numthreads(128, 1, 1)]
+
+#include "SimplexNoise3D.cginc"
+
+struct Particle {
+    float3 emitPos;
+    float3 position;
+    float4 velocity;   // xyz = velocity, w = velocity coef
+    float3 life;       // x = time elapsed, y = life time, z = isActive (1 or -1)
+    float3 size;       // x = current size, y = start size, z = target size
+    float4 color;
+    float4 startColor;
+    float4 endColor;
+};
+
+
+RWStructuredBuffer <Particle> _ParticleBuffer;
+float2 _Time;
+float3 _ExternalForce;
+float _Viscosity, _Convergency;
+
+float3 curlNoise(float3 coord)
+{
+    float3 dx = float3(EPSILON, 0.0, 0.0);
+    float3 dy = float3(0.0, EPSILON, 0.0);
+    float3 dz = float3(0.0, 0.0, EPSILON);
+
+    float3 dpdx0 = simplexNoise(coord - dx);
+    float3 dpdx1 = simplexNoise(coord + dx);
+    float3 dpdy0 = simplexNoise(coord - dy);
+    float3 dpdy1 = simplexNoise(coord + dy);
+    float3 dpdz0 = simplexNoise(coord - dz);
+    float3 dpdz1 = simplexNoise(coord + dz);
+
+    float x = dpdy1.z - dpdy0.z + dpdz1.y - dpdz0.y;
+    float y = dpdz1.x - dpdz0.x + dpdx1.z - dpdx0.z;
+    float z = dpdx1.y - dpdx0.y + dpdy1.x - dpdy0.x;
+
+    return float3(x, y, z) / EPSILON * 2.0;
+}
+
+THREAD
+void Emit (uint id : SV_DispatchThreadID)
+{
+    Particle p = _ParticleBuffer[id];
+    if (p.life.z == -1) {
+        p.life = float3(0.0, p.life.y, 1.0);
+        p.position = p.emitPos * saturate(_Time.y * 0.3);
+        p.size.x = p.size.y;
+        p.color = p.startColor;
+    }
+    _ParticleBuffer[id] = p;
+}
+
+THREAD
+void Update(uint id : SV_DispatchThreadID)
+{
+    Particle p = _ParticleBuffer[id];
+
+    if (p.life.z == 1) {
+        p.life.x += _Time.x;
+        if (p.life.x > p.life.y) {
+            p.life.z = -1.0;
+        }
+        else {
+            float3 force = curlNoise(p.position * _Time.x * _Convergency) - p.velocity.xyz;
+            p.velocity.xyz += (force + _ExternalForce) *_Time.x * _Viscosity * saturate(_Time.y * 0.5);
+            p.position += p.velocity.xyz * _Time.x;
+
+            p.size.x = lerp(p.size.y, p.size.z, saturate(p.life.x/ p.life.y)) * saturate(_Time.y * 0.1f);
+            p.color = lerp(p.startColor, p.endColor, saturate(p.life.x / p.life.y)) * saturate(_Time.y);
+        }
+    }
+    _ParticleBuffer[id] = p;
+}

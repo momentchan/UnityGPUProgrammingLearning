@@ -1,0 +1,28 @@
+﻿#pragma kernel KernelA
+#pragma kernel KernelB
+
+RWTexture2D<float4> _textureBuffer;
+
+[numthreads(8,8,1)]
+void KernelA(uint3 id : SV_DispatchThreadID)
+{
+    float width, height;
+    _textureBuffer.GetDimensions(width, height);
+
+    _textureBuffer[id.xy] = float4(id.x / width,
+                                   id.x / width, 
+                                   id.x / width, 
+                                   1);
+}
+
+[numthreads(8, 8, 1)]
+void KernelB(uint3 id : SV_DispatchThreadID)
+{
+    float width, height;
+    _textureBuffer.GetDimensions(width, height);
+
+    _textureBuffer[id.xy] = float4(id.y / height,
+                                   id.y / height,
+                                   id.y / height,
+                                   1);
+}
