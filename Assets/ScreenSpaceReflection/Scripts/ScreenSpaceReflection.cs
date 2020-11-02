@@ -2,12 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Common;
+using System.Linq;
 
 namespace ScreenSpaceReflection {
     [ExecuteInEditMode]
     public class ScreenSpaceReflection : MonoBehaviour {
 
-        enum Pass { Depth, Reflection }
+        enum Pass { Depth, Reflection, xBlur, yBlur, Accumulation, Composition }
         enum ViewMode { SSR, Normal, Reflection, Calculation, MipMap, Diffuse, Specular, Occusion, Smoothness }
         [SerializeField] Shader shader;
         [SerializeField] ViewMode viewMode;
@@ -28,6 +29,7 @@ namespace ScreenSpaceReflection {
         RenderTexture dpt;
         RenderTexture[] rts = new RenderTexture[2];
         Camera cam;
+        Mesh quad;
 
         int width => cam.pixelWidth;
         int height => cam.pixelHeight;
@@ -37,6 +39,7 @@ namespace ScreenSpaceReflection {
             mat = new Material(shader);
             cam = GetComponent<Camera>();
             dpt = RenderTextureUtil.CreateRenderTexture(width, height, 24, RenderTextureFormat.Default, FilterMode.Bilinear, true, true, true);
+            quad = CreateQuad();
         }
 
         void Update() {
@@ -96,19 +99,53 @@ namespace ScreenSpaceReflection {
 
             if (viewMode == ViewMode.SSR) {
 
-                for(var i=0; i< blurIter; i++) {
+                for (var i = 0; i < blurIter; i++) {
                     Graphics.SetRenderTarget(xBlurRT);
+                    mat.SetPass((int)Pass.xBlur);
+                    Graphics.DrawMeshNow(quad, Matrix4x4.identity);
+                    mat.SetTexture("_ReflectionTexture", xBlurRT);
 
+                    Graphics.SetRenderTarget(yBlurRT);
+                    mat.SetPass((int)Pass.yBlur);
+                    Graphics.DrawMeshNow(quad, Matrix4x4.identity);
+                    mat.SetTexture("_ReflectionTexture", yBlurRT);
                 }
-                Graphics.Blit(reflectionRT, dst);
+                mat.SetTexture("_PreAccumulationTexture", rts[1]);
+                Graphics.SetRenderTarget(rts[0]);
+                mat.SetPass((int)Pass.Accumulation);
+                Graphics.DrawMeshNow(quad, Matrix4x4.identity);
+
+                mat.SetTexture("_AccumulationTexture", rts[0]);
+                Graphics.SetRenderTarget(dst);
+                Graphics.Blit(src, dst, mat, (int)Pass.Composition);
 
             } else {
                 Graphics.Blit(reflectionRT, dst);
             }
+
             RenderTexture.ReleaseTemporary(reflectionRT);
             RenderTexture.ReleaseTemporary(xBlurRT);
             RenderTexture.ReleaseTemporary(yBlurRT);
 
+            var tmp = rts[1];
+            rts[1] = rts[0];
+            rts[0] = tmp;
+        }
+
+        Mesh CreateQuad() {
+            var mesh = new Mesh();
+            mesh.vertices = new Vector3[] {
+                new Vector3(-1f, -1f, 0f),
+                new Vector3(1f, -1f, 0f),
+                new Vector3(-1f, 1f, 0f),
+                new Vector3(1f, 1f, 0f)
+            };
+
+            mesh.triangles = new int[] {
+                0, 3, 1,
+                0, 2, 3
+            };
+            return mesh;
         }
     }
 }

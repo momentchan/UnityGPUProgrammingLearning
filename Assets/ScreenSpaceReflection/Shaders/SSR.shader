@@ -39,12 +39,18 @@
     float _Thickness;
     float _ReflectionRate;
     float _BaseRaise;
+    float _BlurThreshold;
 
     float4x4 _ViewProj;
     float4x4 _InvViewProj;
 
     sampler2D _MainTex;
     float4 _MainTex_ST;
+
+    sampler2D _ReflectionTexture;
+    float4 _ReflectionTexture_TexelSize;
+    sampler2D _PreAccumulationTexture;
+    sampler2D _AccumulationTexture;
 
     sampler2D _CameraGBufferTexture0; // rgb: diffuse,  a: occulusion
     sampler2D _CameraGBufferTexture1; // rgb: specular, a: smoothness
@@ -57,6 +63,14 @@
     {
         v2f o;
         o.vertex = UnityObjectToClipPos(v.vertex);
+        o.screen = ComputeScreenPos(o.vertex);
+        return o;
+    }
+
+    v2f vert_fullscreen(appdata v)
+    {
+        v2f o;
+        o.vertex = v.vertex;
         o.screen = ComputeScreenPos(o.vertex);
         return o;
     }
@@ -96,13 +110,12 @@
             float4 rayScreen = mul(_ViewProj, float4(ray, 1.0));
             float2 rayUV = rayScreen.xy / rayScreen.w * 0.5f + 0.5f;
             float rayDepth = ComputeDepth(rayScreen);
-            float worldDepth = (lod ==0) ? SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV) : tex2Dlod(_CameraDepthTexture, float4(rayUV, 0, lod)) + _BaseRaise * lod;
+            float worldDepth = (lod == 0) ? SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, rayUV) : tex2Dlod(_CameraDepthMipmap, float4(rayUV, 0, lod)) + _BaseRaise * lod;
 
             if (max(abs(rayUV.x - 0.5), abs(rayUV.y - 0.5)) > 0.5) break;
 
 
             if (rayDepth < worldDepth) {
-
                 if (lod == 0) {
                     if (rayDepth + _Thickness > worldDepth) {
                         float sign = -1.0;
@@ -143,6 +156,80 @@
 
         return (col * (1 - smoothness) + refCol * smoothness) * _ReflectionRate + col * (1 - _ReflectionRate);
     }
+
+
+    fixed4 frag_xBlur(v2f i) : SV_Target
+    {
+        float2 uv = i.screen.xy / i.screen.w;
+        float2 size = _ReflectionTexture_TexelSize;
+        float smoothness = tex2D(_CameraGBufferTexture1, uv).w;
+
+        float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+        if (depth <= 0) return tex2D(_ReflectionTexture, uv);
+
+        float depthR = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv + float2(1, 0) * size);
+        float depthL = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv - float2(1, 0) * size);
+
+        float weight[5] = { 0.2270270, 0.1945945, 0.1216216, 0.0540540, 0.0162162 };
+
+        float4 originColor = tex2D(_ReflectionTexture, uv);
+        float4 blurredColor = tex2D(_ReflectionTexture, uv) * weight[0];
+
+        for (int j = 1; j < 5; j++) {
+            blurredColor += tex2D(_ReflectionTexture, uv + float2(j, 0) * size) * weight[j];
+            blurredColor += tex2D(_ReflectionTexture, uv - float2(j, 0) * size) * weight[j];
+        }
+
+        float4 col = (abs(depthR - depthL) > _BlurThreshold) ? originColor : blurredColor * smoothness + originColor * (1 - smoothness);
+        return col;
+    }
+
+    fixed4 frag_yBlur(v2f i) : SV_Target
+    {
+        float2 uv = i.screen.xy / i.screen.w;
+        float2 size = _ReflectionTexture_TexelSize;
+        float smoothness = tex2D(_CameraGBufferTexture1, uv).w;
+
+        float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+        if (depth <= 0) return tex2D(_ReflectionTexture, uv);
+
+        float depthT = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv + float2(0, 1) * size);
+        float depthB = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv - float2(0, 1) * size);
+
+        float weight[5] = { 0.2270270, 0.1945945, 0.1216216, 0.0540540, 0.0162162 };
+
+        float4 originColor = tex2D(_ReflectionTexture, uv);
+        float4 blurredColor = tex2D(_ReflectionTexture, uv) * weight[0];
+
+        for (int j = 1; j < 5; j++) {
+            blurredColor += tex2D(_ReflectionTexture, uv + float2(j, 0) * size) * weight[j];
+            blurredColor += tex2D(_ReflectionTexture, uv - float2(j, 0) * size) * weight[j];
+        }
+
+        float4 col = (abs(depthT - depthB) > _BlurThreshold) ? originColor : blurredColor * smoothness + originColor * (1 - smoothness);
+        return col;
+    }
+
+
+    fixed4 frag_accumulation(v2f i) : SV_Target{
+        float2 uv = i.screen.xy / i.screen.w;
+        float4 base = tex2D(_PreAccumulationTexture, uv);
+        float4 reflection = tex2D(_ReflectionTexture, uv);
+        float blend = 0.2;
+        return lerp(base, reflection, blend);
+    }
+
+
+    fixed4 frag_composition(v2f i) : SV_Target
+    {
+        float2 uv = i.screen.xy / i.screen.w;
+        float4 base = tex2D(_MainTex, uv);
+        float4 reflection = tex2D(_AccumulationTexture, uv);
+        float a = reflection.a;
+        return lerp(base, reflection, a);
+    }
+        
+        
     ENDCG
 
     SubShader
@@ -162,6 +249,38 @@
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag_reflection
+            ENDCG
+        }
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_fullscreen
+            #pragma fragment frag_xBlur
+            ENDCG
+        }
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_fullscreen
+            #pragma fragment frag_yBlur
+            ENDCG
+        }
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_fullscreen
+            #pragma fragment frag_accumulation
+            ENDCG
+        }
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag_composition
             ENDCG
         }
     }

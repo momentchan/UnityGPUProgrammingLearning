@@ -627,7 +627,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   shader: {fileID: 4800000, guid: 472a23a09a02ee64ead2c3e9db742bf8, type: 3}
-  viewMode: 3
+  viewMode: 0
   maxLOD: 3
   maxLoop: 150
   thickness: 0.003
@@ -635,7 +635,7 @@ MonoBehaviour:
   reflectionRate: 0.5
   baseRaise: 0.002
   blurIter: 3
-  blurThreshold: 0.01
+  blurThreshold: 0.0432
 --- !u!124 &1481628775
 Behaviour:
   m_ObjectHideFlags: 0
