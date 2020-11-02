@@ -34,6 +34,10 @@ namespace ScreenSpaceReflection {
         int width => cam.pixelWidth;
         int height => cam.pixelHeight;
 
+        void OnDisable() {
+            Destroy(mat);
+            dpt.Release();
+        }
 
         void Start() {
             mat = new Material(shader);

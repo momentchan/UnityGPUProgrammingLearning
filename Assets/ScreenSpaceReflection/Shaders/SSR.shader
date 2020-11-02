@@ -87,7 +87,7 @@
         float4 refCol = col;
         float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
         float smoothness = tex2D(_CameraGBufferTexture1, uv).w;
-        if (depth <= 0) return tex2D(_MainTex, uv);
+        if (depth <= 0) return col;
 
         float2 screenPos = 2.0 * uv - 1.0; // (-1 ~ 1)
         float4 worldPos = mul(_InvViewProj, float4(screenPos, depth, 1.0));
