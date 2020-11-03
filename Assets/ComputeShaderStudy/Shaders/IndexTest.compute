@@ -1,0 +1,61 @@
+﻿#pragma kernel DispatchThreadID
+#pragma kernel GroupID
+#pragma kernel GroupThreadID
+#pragma kernel GroupIndex
+#pragma kernel MemoryShared
+
+#define SIMULATION_BLOCK_SIZE 128
+RWStructuredBuffer<float>  _DispatchThreadIDBuffer;
+RWStructuredBuffer<float3> _GroupIDBuffer;
+RWStructuredBuffer<float3> _GroupThreadIDBuffer;
+RWStructuredBuffer<float>  _GroupIndexBuffer;
+RWStructuredBuffer<float>  _MemorySharedBuffer;
+
+[numthreads(SIMULATION_BLOCK_SIZE,1,1)]
+void DispatchThreadID(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    _DispatchThreadIDBuffer[idx] = (float)idx;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void GroupID(uint3 id : SV_DispatchThreadID, uint3 Gid : SV_GroupID)
+{
+    uint idx = id.x;
+    _GroupIDBuffer[idx] = Gid;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void GroupThreadID(uint3 id : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
+{
+    uint idx = id.x;
+    _GroupThreadIDBuffer[idx] = GTid;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void GroupIndex(uint3 id : SV_DispatchThreadID, uint GI: SV_GroupIndex)
+{
+    uint idx = id.x;
+    _GroupIndexBuffer[idx] = GI;
+}
+
+groupshared float sharedbuffer[128];
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void MemoryShared(uint3 id : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+    uint idx = id.x;
+
+    if (GI < 100) {
+        for(int i=0; i<10000; i++){}
+    }
+    sharedbuffer[GI] = _MemorySharedBuffer[GI + Gid.x * 128];
+    GroupMemoryBarrierWithGroupSync();
+
+    float sum = 0.0;
+
+    [loop]
+    for (int j = 0; j < 128; j++)
+        sum += sharedbuffer[j];
+    
+    _MemorySharedBuffer[idx] = sum;
+}
