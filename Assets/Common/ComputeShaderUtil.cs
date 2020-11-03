@@ -28,6 +28,11 @@ namespace Common {
                 buffer = null;
             }
         }
+        public static void SwapBuffer(ref ComputeBuffer ping, ref ComputeBuffer pong) {
+            var temp = pong;
+            pong = ping;
+            ping = temp;
+        }
     }
 
     public static class DirectCompute5_0 {
