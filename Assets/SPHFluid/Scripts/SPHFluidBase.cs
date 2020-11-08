@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using UnityEngine;
+using Common;
 
 namespace SPHFluid {
     // Note:
@@ -37,7 +38,7 @@ namespace SPHFluid {
         [SerializeField] protected bool simulation;
 
         private float timeStep;
-        private float viscocityCoef;
+        private float viscosityCoef;
         private float pressureCoef;
         private float densityCoef;
 
@@ -63,7 +64,7 @@ namespace SPHFluid {
 
             densityCoef = mass * 4f / (Mathf.PI * Mathf.Pow(radius, 8));
             pressureCoef = mass * -30.0f / (Mathf.PI * Mathf.Pow(radius, 5));
-            viscocityCoef = mass * 20f / (3 * Mathf.PI * Mathf.Pow(radius, 5));
+            viscosityCoef = mass * 20f / (3 * Mathf.PI * Mathf.Pow(radius, 5));
 
             computeShader.SetInt("_ParticleNums", particleNums);
             computeShader.SetFloat("_TimeStep", timeStep);
@@ -74,7 +75,7 @@ namespace SPHFluid {
             computeShader.SetFloat("_Viscosity", viscosity);
             computeShader.SetFloat("_DensityCoef", densityCoef);
             computeShader.SetFloat("_PressureCoef", pressureCoef);
-            computeShader.SetFloat("_ViscocityCoef", viscocityCoef);
+            computeShader.SetFloat("_ViscosityCoef", viscosityCoef);
             computeShader.SetVector("_Gravity", gravity);
             computeShader.SetVector("_Range", range);
 
@@ -135,13 +136,7 @@ namespace SPHFluid {
             computeShader.SetBuffer(kernelID, "_ParticleBufferWrite", particleBufferWrite);
             computeShader.Dispatch(kernelID, threadGroupX, 1, 1);
 
-            SwapBuffer(ref particleBufferRead, ref particleBufferWrite);
-        }
-
-        private void SwapBuffer(ref ComputeBuffer ping, ref ComputeBuffer pong) {
-            ComputeBuffer temp = ping;
-            ping = pong;
-            pong = temp;
+            ComputeShaderUtil.SwapBuffer(ref particleBufferRead, ref particleBufferWrite);
         }
 
         protected abstract void AdditionalCSParams(ComputeShader computeShader);

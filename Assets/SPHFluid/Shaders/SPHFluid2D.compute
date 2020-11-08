@@ -41,7 +41,7 @@ cbuffer CB {
     float _Viscosity;
     float _DensityCoef;
     float _PressureCoef;
-    float _ViscocityCoef;
+    float _ViscosityCoef;
     float2 _Gravity;
     float2 _Range;
 
@@ -68,7 +68,7 @@ inline float2 CalculateGradPressure(float r, float P_pressure, float N_pressure,
 inline float2 CalculateViscocity(float r, float2 P_velocity, float2 N_velocity, float N_density) {
     const float h = _Radius;
     float2 vel_diff = N_velocity - P_velocity;
-    return _ViscocityCoef * (h - r) * (vel_diff / N_density);
+    return _ViscosityCoef * (h - r) * (vel_diff / N_density);
 }
 
 [numthreads(THREAD_SIZE_X,1,1)]
