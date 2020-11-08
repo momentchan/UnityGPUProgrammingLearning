@@ -1,0 +1,215 @@
+﻿#pragma kernel DensityCS_Shared
+#pragma kernel ForceCS_Shared
+#pragma kernel IntegrateCS
+
+#define SIMULATION_BLOCK_SIZE 256
+
+struct Particle {
+    float3 position;
+    float3 velocity;
+};
+
+struct ParticleDensity {
+    float density;
+};
+
+struct ParticleForce {
+    float3 acceleration;
+};
+
+int _NumParticles;
+float _TimeStep;
+float _Smoothlen;
+float _PressureStiffness;
+float _RestDensity;
+float _DensityCoef;
+float _PressureCoef;
+float _ViscosityCoef;
+float4 _Gravity;
+float4 _DomainCenter;
+float _DomainSphereRadius;
+float _Restitution;
+float _MaxVelocity;
+
+float3 _MousePosition;
+float _MouseRadius;
+float _InteractionForce;
+bool _MouseDown;
+
+StructuredBuffer<Particle>          _ParticlesRead;
+RWStructuredBuffer<Particle>        _ParticlesWrite;
+
+StructuredBuffer<ParticleDensity>   _ParticlesDensityRead;
+RWStructuredBuffer<ParticleDensity> _ParticlesDensityWrite;
+
+StructuredBuffer<ParticleForce>     _ParticlesForceRead;
+RWStructuredBuffer<ParticleForce>   _ParticlesForceWrite;
+
+
+
+inline float CalculateDensity(float r_sq) {
+    // W_poly6(r, h) = 315 / (64 * pi * h^9)
+    // g_fDensityCoef = fParticleMass * 315 / (64 * pi * fSmoothlen^9)
+    const float h_sq = _Smoothlen * _Smoothlen;
+    return _DensityCoef * (h_sq - r_sq) * (h_sq - r_sq) * (h_sq - r_sq);
+}
+
+inline float CalculatePressure(float density) {
+    // Pressure = B * ((rho / rho_0)^y - 1)
+    return _PressureStiffness * max(pow(density / _RestDensity, 3) - 1, 0);
+}
+
+inline float3 CalculateGradPressure(float r, float P_pressure, float N_pressure, float N_density, float3 diff) {
+    const float h = _Smoothlen;
+    float pressure_avg = 0.5f * (N_pressure + P_pressure);
+    // W_spkiey(r, h) = 15 / (pi * h ^ 6) * (h - r) ^ 3
+    // GRAD( W_spikey(r, h) ) = -45 / (pi * h^6) * (h - r)^2
+    // g_fGradPressureCoef = fParticleMass * -45.0f / (PI * fSmoothlen^6)
+    return _PressureCoef * (h - r) * (h - r) * diff / r * (pressure_avg / N_density);
+}
+
+
+inline float3 CalculateViscocity(float r, float3 P_velocity, float3 N_velocity, float N_density) {
+    const float h = _Smoothlen;
+    float3 vel_diff = N_velocity - P_velocity;
+    return _ViscosityCoef * (h - r) * (vel_diff / N_density);
+}
+
+
+//--------------------------------------------------------------------------------------
+// Density Calculation
+//--------------------------------------------------------------------------------------
+groupshared float3 density_shared_pos[SIMULATION_BLOCK_SIZE];
+
+[numthreads(SIMULATION_BLOCK_SIZE,1,1)]
+void DensityCS_Shared(uint3 id : SV_DispatchThreadID, uint GI : SV_GroupIndex)
+{
+    uint P_ID = id.x;
+    float h_sq = _Smoothlen * _Smoothlen;
+    float3 P_position = _ParticlesRead[P_ID].position;
+
+    float density = 0;
+
+    [loop]
+    for (uint N_block_ID = 0; N_block_ID < (uint)_NumParticles; N_block_ID += SIMULATION_BLOCK_SIZE)
+    {
+        // Cache a tile of particles onto shared memory to increase IO efficiency
+        density_shared_pos[GI] = _ParticlesRead[N_block_ID + GI].position;
+
+        GroupMemoryBarrierWithGroupSync();
+
+        [loop]
+        for (uint N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++) {
+            float3 N_position = density_shared_pos[N_tile_ID];
+
+            float3 diff = N_position - P_position;
+            float r_sq = dot(diff, diff);
+            if (r_sq < h_sq) {
+                density += CalculateDensity(r_sq);
+            }
+        }
+
+        GroupMemoryBarrierWithGroupSync();
+    }
+    
+    _ParticlesDensityWrite[P_ID].density = density;
+}
+
+//--------------------------------------------------------------------------------------
+// Force Calculation
+//--------------------------------------------------------------------------------------
+groupshared struct { float3 position; float3 velocity; float density; } force_shared_pos[SIMULATION_BLOCK_SIZE];
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void ForceCS_Shared(uint3 id : SV_DispatchThreadID, uint GI : SV_GroupIndex)
+{
+    uint P_ID = id.x;
+    float3 P_position = _ParticlesRead[P_ID].position;
+    float3 P_velocity = _ParticlesRead[P_ID].velocity;
+    float P_density = _ParticlesDensityRead[P_ID].density;
+    float P_pressure = CalculatePressure(P_density);
+
+    const float h_sq = _Smoothlen * _Smoothlen;
+
+    float3 acceleration = float3(0, 0, 0);
+
+
+    // Calculate the acceleration based on all neighbors
+
+    [loop]
+    for (uint N_block_ID = 0; N_block_ID < (uint)_NumParticles; N_block_ID += SIMULATION_BLOCK_SIZE) {
+
+        force_shared_pos[GI].position = _ParticlesRead[N_block_ID + GI].position;
+        force_shared_pos[GI].velocity = _ParticlesRead[N_block_ID + GI].velocity;
+        force_shared_pos[GI].density  = _ParticlesDensityRead[N_block_ID + GI].density; 
+
+        GroupMemoryBarrierWithGroupSync();
+
+        [loop]
+        for(uint N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++){
+
+            uint N_ID = N_block_ID + N_tile_ID;
+            float3 N_position = force_shared_pos[N_tile_ID].position;
+
+            float3 diff = N_position - P_position;
+            float r_sq = dot(diff, diff);
+
+            if (r_sq < h_sq && P_ID != N_ID) {
+                float3 N_velocity = force_shared_pos[N_tile_ID].velocity;
+                float N_density   = force_shared_pos[N_tile_ID].density;
+                float N_pressure  = CalculatePressure(N_density);
+                float r = sqrt(r_sq);
+
+                // Pressure
+                acceleration += CalculateGradPressure(r, P_pressure, N_pressure, N_density, diff);
+
+                // Viscosity
+                acceleration += CalculateViscocity(r, P_velocity, N_velocity, N_density);
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    _ParticlesForceWrite[P_ID].acceleration = acceleration / P_density;
+}
+
+//--------------------------------------------------------------------------------------
+// Integration
+//--------------------------------------------------------------------------------------
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void IntegrateCS(uint3 id : SV_DispatchThreadID)
+{
+    uint P_ID = id.x;
+    float3 position = _ParticlesRead[P_ID].position;
+    float3 velocity = _ParticlesRead[P_ID].velocity;
+    float3 acceleration = _ParticlesForceRead[P_ID].acceleration;
+
+    if (distance(position, _MousePosition.xy) < _MouseRadius && _MouseDown) {
+        float3 dir = position - _MousePosition;
+        float push = _MouseRadius - length(dir);
+        acceleration += _InteractionForce * push * normalize(dir);
+    }
+
+    // Spherical Collistion
+    float3 pcV = position - _DomainCenter.xyz;
+    float distanceFromCenter = length(pcV);
+    float3 contactPoint = normalize(pcV) * _DomainSphereRadius + _DomainCenter.xyz;
+    float distance = length(contactPoint - position);
+
+    if (distanceFromCenter > _DomainSphereRadius&& length(velocity) > 0.0) {
+        float3 normal = normalize(contactPoint - position);
+        float restitution = _Restitution * distance / (_TimeStep * length(velocity));
+        velocity -= (1.0 + restitution) * dot(velocity, normal) * normal;
+        position = contactPoint;
+    }
+
+    acceleration += _Gravity.xyz;
+
+    velocity += _TimeStep * acceleration;
+    velocity = (length(velocity) > _MaxVelocity) ? normalize(velocity) * _MaxVelocity : velocity;
+
+    position += _TimeStep * velocity;
+
+    _ParticlesWrite[P_ID].position = position;
+    _ParticlesWrite[P_ID].velocity = velocity;
+}
