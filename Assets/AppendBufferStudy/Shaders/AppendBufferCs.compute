@@ -1,0 +1,35 @@
+﻿#pragma kernel AppendMultiple
+#pragma kernel AppendSingle
+
+AppendStructuredBuffer<float3> _AppendBuffer;
+float _Size;
+float _Width;
+int _Count;
+
+float3 ConvertIdToPos(uint3 index) {
+    float3 pos = index / (_Width - 1);  //Normalize pos
+    pos = (pos - 0.5) * 2.0 * _Size;    //make pos range from -size to +size
+    pos.z = 0.0;                        //keep z pos at 0
+
+    return pos;
+}
+
+[numthreads(8, 8, 1)]
+void AppendMultiple(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = ConvertIdToPos(id);
+
+    if (id.x % 2 == 0 && id.y % 2 == 0)
+        _AppendBuffer.Append(pos);
+}
+
+[numthreads(8, 1, 1)]
+void AppendSingle(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x <= 0) {
+        uint3 index = int3(_Count % _Width, _Count / _Width, 0);
+        float3 pos = ConvertIdToPos(index);
+
+        _AppendBuffer.Append(pos);
+    }
+}
