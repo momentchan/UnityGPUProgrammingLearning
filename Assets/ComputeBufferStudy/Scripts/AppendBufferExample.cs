@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace BufferStudy {
+namespace ComputeBufferStudy {
     public class AppendBufferExample : MonoBehaviour {
         public enum Mode { CS, CG }
         public Mode mode;
