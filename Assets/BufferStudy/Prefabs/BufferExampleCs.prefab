@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 7114569824896203643}
   - component: {fileID: 7114569824896203640}
   m_Layer: 0
-  m_Name: AppendBufferCs
+  m_Name: BufferExampleCs
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -43,6 +43,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b5813d96ec1b7440a86ccb738e9f4cd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  material: {fileID: 2100000, guid: 2756da2e08a60e044b29d75efebabe09, type: 2}
   appendBufferShader: {fileID: 7200000, guid: eb73c6b063c264c488115c68cb33bba3, type: 3}
+  consumeBufferShader: {fileID: 7200000, guid: 2f747f9abe9b8c94695a37bd96dc2c11, type: 3}
+  material: {fileID: 2100000, guid: 2756da2e08a60e044b29d75efebabe09, type: 2}
   mode: 1

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AppendBufferStudy {
+namespace BufferStudy {
     public class AppendBufferCg : MonoBehaviour {
 
         public Material material;

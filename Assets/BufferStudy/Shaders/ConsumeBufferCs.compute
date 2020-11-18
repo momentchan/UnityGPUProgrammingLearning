@@ -1,0 +1,10 @@
+﻿#pragma kernel Consume
+
+ConsumeStructuredBuffer<float3> _ConsumeBuffer;
+
+[numthreads(8, 8, 1)]
+
+void Consume(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = _ConsumeBuffer.Consume();
+}
