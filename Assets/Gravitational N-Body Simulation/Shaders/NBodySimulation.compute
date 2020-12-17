@@ -1,0 +1,67 @@
+﻿#pragma kernel Update
+#include "Body.cginc"
+
+#define SIMULATION_BLOCK_SIZE 256
+
+float _DeltaTime;
+float _Damping;
+int   _ParticleNumbers;
+float _SofteningSquared;
+
+StructuredBuffer<Body>	 _ParticleBufferRead;
+RWStructuredBuffer<Body> _ParticleBufferWrite;
+
+groupshared Body sharedBody[SIMULATION_BLOCK_SIZE];
+
+float3 ComputeBodyForce(Body body, uint GI) 
+{
+	float3 acc = 0;
+	float3 P_position = body.position;
+	float P_mass = body.mass;
+
+	[loop]
+	for (uint N_block_ID = 0; N_block_ID < (uint)_ParticleNumbers; N_block_ID += SIMULATION_BLOCK_SIZE) {
+		sharedBody[GI] = _ParticleBufferRead[N_block_ID + GI];
+
+		GroupMemoryBarrierWithGroupSync();
+
+		for (int N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++) {
+
+			float3 N_position = sharedBody[N_tile_ID].position;
+			float N_mass      = sharedBody[N_tile_ID].mass;
+
+			float3 diff = N_position - P_position;
+			float distSqr = dot(diff, diff) + _SofteningSquared;
+
+			float distSixth = distSqr * distSqr * distSqr;
+			float invDistCube = 1.0f / sqrt(distSixth);
+
+			float s = P_mass * invDistCube;
+
+			acc += diff * s;
+
+		}
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	return acc;
+
+}
+
+
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Update (uint3 DTid : SV_DispatchThreadID, 
+			 uint GI : SV_GroupIndex)
+{
+	Body body = _ParticleBufferRead[DTid.x];
+
+	float3 force = ComputeBodyForce(body, GI);
+
+	body.velocity += force * _DeltaTime;
+	body.velocity *= _Damping;
+
+	body.position += body.velocity * _DeltaTime;
+
+	_ParticleBufferWrite[DTid.x] = body;
+}
