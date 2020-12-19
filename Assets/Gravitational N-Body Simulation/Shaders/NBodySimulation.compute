@@ -3,9 +3,10 @@
 
 #define SIMULATION_BLOCK_SIZE 256
 
+int   _ParticleNumbers;
+uint   _DivideLevel;
 float _DeltaTime;
 float _Damping;
-int   _ParticleNumbers;
 float _SofteningSquared;
 
 StructuredBuffer<Body>	 _ParticleBufferRead;
@@ -13,22 +14,30 @@ RWStructuredBuffer<Body> _ParticleBufferWrite;
 
 groupshared Body sharedBody[SIMULATION_BLOCK_SIZE];
 
-float3 ComputeBodyForce(Body body, uint GI) 
+float3 ComputeBodyForce(Body body, uint GI, uint3 groupID) 
 {
 	float3 acc = 0;
 	float3 P_position = body.position;
 	float P_mass = body.mass;
 
+	// total group count
+	uint group_count = (uint)_ParticleNumbers / SIMULATION_BLOCK_SIZE;
+	// group count to compute
+	uint N_group_count = group_count / _DivideLevel;
+
 	[loop]
-	for (uint N_block_ID = 0; N_block_ID < (uint)_ParticleNumbers; N_block_ID += SIMULATION_BLOCK_SIZE) {
-		sharedBody[GI] = _ParticleBufferRead[N_block_ID + GI];
+	for (uint index = 0; index < N_group_count; index += 1) {
+
+		int N_group_ID	  = (groupID.x + index) % group_count;			// select which group to compute
+		int N_group_index = N_group_ID * SIMULATION_BLOCK_SIZE;			// selcted group in overall index
+		sharedBody[GI]	  = _ParticleBufferRead[N_group_index + GI];	// store in shared buffer
 
 		GroupMemoryBarrierWithGroupSync();
 
-		for (int N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++) {
+		for (int N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++) {	// compute force inside selected group
 
-			float3 N_position = sharedBody[N_tile_ID].position;
-			float N_mass      = sharedBody[N_tile_ID].mass;
+			float3 N_position  = sharedBody[N_tile_ID].position;
+			float  N_mass      = sharedBody[N_tile_ID].mass;
 
 			float3 diff = N_position - P_position;
 			float distSqr = dot(diff, diff) + _SofteningSquared;
@@ -36,27 +45,25 @@ float3 ComputeBodyForce(Body body, uint GI)
 			float distSixth = distSqr * distSqr * distSqr;
 			float invDistCube = 1.0f / sqrt(distSixth);
 
-			float s = P_mass * invDistCube;
+			float s = N_mass * invDistCube;
 
 			acc += diff * s;
-
 		}
+
 		GroupMemoryBarrierWithGroupSync();
 	}
 
 	return acc;
-
 }
-
-
 
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
 void Update (uint3 DTid : SV_DispatchThreadID, 
-			 uint GI : SV_GroupIndex)
+			 uint GI : SV_GroupIndex,
+			 uint3 groupID : SV_GroupID)
 {
 	Body body = _ParticleBufferRead[DTid.x];
 
-	float3 force = ComputeBodyForce(body, GI);
+	float3 force = ComputeBodyForce(body, GI, groupID);
 
 	body.velocity += force * _DeltaTime;
 	body.velocity *= _Damping;

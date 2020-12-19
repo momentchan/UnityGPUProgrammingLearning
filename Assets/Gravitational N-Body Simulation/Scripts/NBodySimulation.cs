@@ -6,7 +6,7 @@ using UnityEngine;
 using Common;
 
 namespace GravitationalNBodySimulation {
-    public class SimpleNBodySimulation : MonoBehaviour {
+    public class NBodySimulation : MonoBehaviour {
 
         public ComputeBuffer GetParticleBuffer() => bufferRead;
         public int GetParticleNumbers() => particleNumbers;
@@ -14,6 +14,7 @@ namespace GravitationalNBodySimulation {
         [SerializeField] protected ComputeShader cs;
         [SerializeField] protected NumOptions numOptions = NumOptions.NUM_64K;
         [SerializeField] protected float positionScale = 1f;
+        [SerializeField] protected int divideLevel;
         [SerializeField] protected float damping = 0.95f;
         [SerializeField] protected float softeningSquared = 0.1f;
 
@@ -29,6 +30,7 @@ namespace GravitationalNBodySimulation {
         }
 
         private void InitBuffer() {
+            Random.InitState(0);
             bufferRead = new ComputeBuffer(particleNumbers, Marshal.SizeOf(typeof(Body)));
             bufferWrite = new ComputeBuffer(particleNumbers, Marshal.SizeOf(typeof(Body)));
 
@@ -50,11 +52,12 @@ namespace GravitationalNBodySimulation {
             cs.SetFloat("_Damping", damping);
             cs.SetFloat("_SofteningSquared", softeningSquared);
             cs.SetInt("_ParticleNumbers", particleNumbers);
+            cs.SetInt("_DivideLevel", divideLevel);
 
             cs.SetBuffer(updateKernel.Index, "_ParticleBufferRead", bufferRead);
             cs.SetBuffer(updateKernel.Index, "_ParticleBufferWrite", bufferWrite);
 
-            cs.Dispatch(updateKernel.Index, particleNumbers / (int)updateKernel.ThreadX, (int)updateKernel.ThreadY, (int)updateKernel.ThreadZ);
+            cs.Dispatch(updateKernel.Index, Mathf.CeilToInt(particleNumbers / (int)updateKernel.ThreadX), (int)updateKernel.ThreadY, (int)updateKernel.ThreadZ);
 
             ComputeShaderUtil.SwapBuffer(ref bufferRead, ref bufferWrite);
         }
