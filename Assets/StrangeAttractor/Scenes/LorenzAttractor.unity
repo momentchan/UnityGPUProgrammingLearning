@@ -131,6 +131,7 @@ GameObject:
   m_Component:
   - component: {fileID: 648144143}
   - component: {fileID: 648144144}
+  - component: {fileID: 648144145}
   m_Layer: 0
   m_Name: Lorenz Attractor
   m_TagString: Untagged
@@ -164,8 +165,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c25f6cebfb9dc584c974f56ed587715d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  reEmitKey: 97
   computeShader: {fileID: 7200000, guid: 66fee406078d8b14a90d87004ed542dd, type: 3}
+  instanceMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
+  mat: {fileID: 2100000, guid: 5a16469263b5d0943a6cf7ea91063c2d, type: 2}
   instanceCount: 260000
+  emitterSize: 0.0001
+  particleSize: 0.3
   gradient:
     serializedVersion: 2
     key0: {r: 1, g: 1, b: 1, a: 1}
@@ -195,14 +201,23 @@ MonoBehaviour:
     m_Mode: 0
     m_NumColorKeys: 8
     m_NumAlphaKeys: 3
-  emitterSize: 0.0001
-  particleSize: 0.3
-  instanceMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
-  mat: {fileID: 2100000, guid: 5a16469263b5d0943a6cf7ea91063c2d, type: 2}
-  reEmitKey: 97
   p: 10
   r: 28
   b: 2.666667
+--- !u!114 &648144145
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 648144142}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c126e22f2a7c8804cafb3fb0db8fb9dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  material: {fileID: 2100000, guid: 5a16469263b5d0943a6cf7ea91063c2d, type: 2}
+  attractor: {fileID: 648144144}
 --- !u!1 &1630629369
 GameObject:
   m_ObjectHideFlags: 0

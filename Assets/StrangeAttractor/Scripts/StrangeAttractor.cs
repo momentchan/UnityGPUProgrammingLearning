@@ -1,5 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 using Common;
@@ -11,8 +10,6 @@ namespace StrangeAttractor {
 
         [SerializeField] protected KeyCode reEmitKey = KeyCode.A;
         [SerializeField] protected ComputeShader computeShader;
-        [SerializeField] protected Mesh instanceMesh;
-        [SerializeField] protected Material mat;
         [SerializeField] protected int instanceCount;
         [SerializeField] protected float emitterSize = 0.2f;
         [SerializeField] protected float particleSize = 0.3f;
@@ -20,17 +17,17 @@ namespace StrangeAttractor {
 
         protected ComputeShader computeShaderInstance;
         protected ComputeBuffer computeBuffer;
-        protected ComputeBuffer argsBuffer;
-        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
         private int cachedInstanceCount = -1;
         private float timer;
 
         private int bufferPropId;
         private int timesPropId;
-        private int modelMatrixPropId;
 
         private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
         private GPUThreads gpuThreads;
+
+        public ComputeBuffer GetParticleBuffer() => computeBuffer;
+        public int GetParticleNumbers() => instanceCount;
 
         private enum ComputeKernel {
             Emit, Update
@@ -50,19 +47,12 @@ namespace StrangeAttractor {
             if (cachedInstanceCount != instanceCount)
                 InitializeBuffers();
 
-            mat.SetPass(0);
-            mat.SetBuffer(bufferPropId, computeBuffer);
-            mat.SetMatrix(modelMatrixPropId, transform.localToWorldMatrix);
-
             UpdateShaderUniforms();
 
             computeShaderInstance.SetVector(timesPropId, new Vector2(Time.deltaTime, timer));
 
             computeShaderInstance.SetBuffer(kernelMap[ComputeKernel.Update], bufferPropId, computeBuffer);
             computeShaderInstance.Dispatch(kernelMap[ComputeKernel.Update], Mathf.CeilToInt(1f * instanceCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
-
-            // Render
-            Graphics.DrawMeshInstancedIndirect(instanceMesh, 0, mat, new Bounds(Vector3.zero, new Vector3(100f, 100f, 100f)), argsBuffer);
 
             if (Input.GetKeyDown(reEmitKey)) {
                 computeShaderInstance.SetBuffer(kernelMap[ComputeKernel.Emit], bufferPropId, computeBuffer);
@@ -78,11 +68,9 @@ namespace StrangeAttractor {
             uint threadX, threadY, threadZ;
             computeShaderInstance.GetKernelThreadGroupSizes(kernelMap[ComputeKernel.Emit], out threadX, out threadY, out threadZ);
             gpuThreads = new GPUThreads(threadX, threadY, threadZ);
-            argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
 
             bufferPropId = Shader.PropertyToID("_Particles");
             timesPropId = Shader.PropertyToID("_Times");
-            modelMatrixPropId = Shader.PropertyToID("_ModelMatrix");
 
             InitializeShaderUniforms();
 
@@ -102,11 +90,6 @@ namespace StrangeAttractor {
         private void InitializeBuffers() {
             InitializeComputeBuffer();
 
-            uint numIndices = (instanceMesh != null) ? instanceMesh.GetIndexCount(0) : 0;
-            args[0] = numIndices;
-            args[1] = (uint)instanceCount;
-            argsBuffer.SetData(args);
-
             cachedInstanceCount = instanceCount;
 
             computeShaderInstance.SetBuffer(kernelMap[ComputeKernel.Emit], bufferPropId, computeBuffer);
@@ -115,7 +98,6 @@ namespace StrangeAttractor {
 
         private void OnDestroy() {
             ComputeShaderUtil.ReleaseBuffer(computeBuffer);
-            ComputeShaderUtil.ReleaseBuffer(argsBuffer);
         }
 
         protected struct Particle {

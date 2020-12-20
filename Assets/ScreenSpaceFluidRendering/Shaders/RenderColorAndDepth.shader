@@ -2,6 +2,8 @@
 {
 	CGINCLUDE
 	#include "UnityCG.cginc"
+	#include "../../Common/Libs/Definition.cginc"
+
 
 	struct Particle {
 		float3 position;
@@ -37,20 +39,6 @@
 		return o;
 	}
 
-	static const float3 g_positions[4] = {
-		float3(-1, 1, 0),
-		float3(1, 1, 0),
-		float3(-1,-1, 0),
-		float3(1,-1, 0)
-	};
-
-	static const float2 g_texcoords[4] = {
-			float2(0, 1),
-			float2(1, 1),
-			float2(0, 0),
-			float2(1, 0)
-	};
-	
 	[maxvertexcount(4)]
 	void geom(point v2g IN[1], inout TriangleStream<g2f> stream) 
 	{

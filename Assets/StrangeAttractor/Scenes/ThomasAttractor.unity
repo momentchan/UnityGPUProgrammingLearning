@@ -131,6 +131,7 @@ GameObject:
   m_Component:
   - component: {fileID: 648144143}
   - component: {fileID: 648144145}
+  - component: {fileID: 648144144}
   m_Layer: 0
   m_Name: Thomas Attractor
   m_TagString: Untagged
@@ -145,13 +146,26 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 648144142}
-  m_LocalRotation: {x: 0.26656556, y: -0.43247393, z: -0.13552906, w: -0.8506121}
+  m_LocalRotation: {x: -0.20941432, y: -0.6811953, z: -0.21347357, w: 0.6682422}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 1
-  m_LocalEulerAnglesHint: {x: -34.8, y: -306.1, z: 0}
+  m_LocalEulerAnglesHint: {x: -34.8, y: -811.1, z: 0}
+--- !u!114 &648144144
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 648144142}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c126e22f2a7c8804cafb3fb0db8fb9dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  material: {fileID: 2100000, guid: 5a16469263b5d0943a6cf7ea91063c2d, type: 2}
 --- !u!114 &648144145
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -166,15 +180,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   reEmitKey: 97
   computeShader: {fileID: 7200000, guid: e39850fc7e21ba54e8942cb3a6b350ae, type: 3}
-  instanceMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
-  mat: {fileID: 2100000, guid: 5a16469263b5d0943a6cf7ea91063c2d, type: 2}
   instanceCount: 260000
   emitterSize: 0.2
   particleSize: 0.023
   gradient:
     serializedVersion: 2
-    key0: {r: 1, g: 1, b: 1, a: 1}
-    key1: {r: 0.5849056, g: 0.9958265, b: 1, a: 1}
+    key0: {r: 1, g: 1, b: 1, a: 0.09803922}
+    key1: {r: 0.5849056, g: 0.9958265, b: 1, a: 0.09803922}
     key2: {r: 1, g: 1, b: 1, a: 0}
     key3: {r: 0.9313809, g: 1, b: 0.5471698, a: 0}
     key4: {r: 1, g: 0.7246106, b: 0.1509434, a: 0}
@@ -279,7 +291,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1630629369}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -10}
+  m_LocalPosition: {x: 0, y: 0, z: -20}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}

@@ -8,6 +8,7 @@
     CGINCLUDE
     #include "UnityCG.cginc"
     #include "Body.cginc"
+    #include "../../Common/Libs/Definition.cginc"
 
     StructuredBuffer<Body> _Particles;
     float _Scale;
@@ -15,28 +16,12 @@
     sampler2D _MainTex;
     float4 _MainTex_ST;
 
-    static const float3 g_positions[4] = {
-        float3(-1, 1, 0),
-        float3(1, 1, 0),
-        float3(-1,-1, 0),
-        float3(1,-1, 0)
-    };
-
-    static const float2 g_texcoords[4] = {
-            float2(0, 1),
-            float2(1, 1),
-            float2(0, 0),
-            float2(1, 0)
-    };
-
 	struct v2g {
         float4 pos: SV_POSITION;
-        int id : TEXCOORD0;
 	};
 
     struct g2f {
         float4 pos : SV_POSITION;
-        int id : TEXCOORD0;
         float2 uv : TEXCOORD1;
     };
 
@@ -52,7 +37,6 @@
     v2g vert(uint id : SV_VertexID) {
         v2g o;
         o.pos = float4(_Particles[id].position, 1);
-        o.id = id;
         return o;
     }
 
@@ -68,7 +52,6 @@
             float3 pos = vertPos + mul(unity_CameraToWorld, displace);
             o.pos = UnityObjectToClipPos(float4(pos, 1.0));
             o.uv = g_texcoords[i];
-            o.id = IN[0].id;
             stream.Append(o);
         }
         stream.RestartStrip();
