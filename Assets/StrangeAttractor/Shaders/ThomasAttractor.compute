@@ -1,0 +1,39 @@
+﻿#pragma kernel Emit
+#pragma kernel Update
+#include "Particle.cginc"
+
+#define SIMULATION_BLOCK_SIZE 128
+#define DT 0.05
+
+RWStructuredBuffer<Particle> _Particles;
+
+float b;
+
+float3 ThomasAttractor(float3 pos) {
+	float dxdt = sin(pos.y) - b * pos.x;
+	float dydt = sin(pos.z) - b * pos.y;
+	float dzdt = sin(pos.x) - b * pos.z;
+	return float3(dxdt, dydt, dzdt) * DT;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Emit(uint3 id : SV_DispatchThreadID)
+{
+	Particle p = _Particles[id.x];
+	p.life = (float)id * -1e-05;
+	p.position = p.emitPos;
+	p.size.x = p.size.y;
+	_Particles[id.x] = p;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+	Particle p = _Particles[id.x];
+	p.life.x += DT;
+	if (p.life.x > 0) {
+		p.velocity = ThomasAttractor(p.position);
+		p.position += p.velocity;
+	}
+	_Particles[id.x] = p;
+}

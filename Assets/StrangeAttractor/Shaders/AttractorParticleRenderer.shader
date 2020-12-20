@@ -52,7 +52,8 @@
     {
         Tags { "RenderType"="Opaque" }
         LOD 100
-
+        Cull off
+            
         Pass
         {
             CGPROGRAM

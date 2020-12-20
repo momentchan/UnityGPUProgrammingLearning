@@ -14,7 +14,7 @@ namespace StrangeAttractor {
         [SerializeField] protected Mesh instanceMesh;
         [SerializeField] protected Material mat;
         [SerializeField] protected int instanceCount;
-        [SerializeField] protected float emitterSize = 10f;
+        [SerializeField] protected float emitterSize = 0.2f;
         [SerializeField] protected float particleSize = 0.3f;
         [SerializeField] protected Gradient gradient;
 
