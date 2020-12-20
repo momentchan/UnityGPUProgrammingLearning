@@ -21,6 +21,18 @@ namespace Common {
         }
     }
 
+    public struct GPUThreads {
+        public int x;
+        public int y;
+        public int z;
+
+        public GPUThreads(uint x, uint y, uint z) {
+            this.x = (int)x;
+            this.y = (int)y;
+            this.z = (int)z;
+        }
+    }
+
     public class ComputeShaderUtil {
         public static void ReleaseBuffer(ComputeBuffer buffer) {
             if (buffer != null) {

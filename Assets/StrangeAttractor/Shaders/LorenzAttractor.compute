@@ -1,0 +1,43 @@
+﻿#pragma kernel Emit
+#pragma kernel Update
+#include "Particle.cginc"
+
+#define SIMULATION_BLOCK_SIZE 128
+#define DT 0.022
+
+RWStructuredBuffer<Particle> _Particles;
+
+float p;
+float r;
+float b;
+
+float3 LorenzAttractor(float3 pos) {
+	float dxdt = p * (pos.y - pos.x);
+	float dydt = pos.x * (r - pos.z) - pos.y;
+	float dzdt = pos.x * pos.y - b * pos.z;
+	return float3(dxdt, dydt, dzdt) * DT;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Emit(uint3 id : SV_DispatchThreadID)
+{
+	Particle p = _Particles[id.x];
+	p.life = (float)id * -1e-05;
+	p.position = p.emitPos;
+	p.size.x = 0.0;
+	_Particles[id.x] = p;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+	Particle p = _Particles[id.x];
+	p.life.x += DT;
+	p.size.x = p.size.y * saturate(length(p.velocity));
+
+	if (p.life.x > 0) {
+		p.velocity = LorenzAttractor(p.position);
+		p.position += p.velocity;
+	}
+	_Particles[id.x] = p;
+}
