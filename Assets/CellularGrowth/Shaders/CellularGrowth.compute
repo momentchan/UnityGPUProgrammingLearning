@@ -1,6 +1,8 @@
 ﻿#pragma kernel Init
 #pragma kernel Emit
 #pragma kernel Update
+#pragma kernel GetDividable
+#pragma kernel Divide
 
 #define SIMULATION_BLOCK_SIZE 128
 #include "Particle.cginc"
@@ -10,6 +12,9 @@ StructuredBuffer<Particle> _ParticlesRead;
 RWStructuredBuffer<Particle> _Particles;
 AppendStructuredBuffer<uint> _ParticlePoolAppend;
 ConsumeStructuredBuffer<uint> _ParticlePoolConsume;
+
+AppendStructuredBuffer<uint> _DividablePoolAppend;
+ConsumeStructuredBuffer<uint> _DividablePoolConsume;
 
 float _Time;
 float _DT;
@@ -22,6 +27,7 @@ float _Repulsion;
 float2 _EmitPoint;
 int _EmitCount;
 
+int _DivideCount;
 
 Particle create() {
 	Particle p;
@@ -33,6 +39,75 @@ Particle create() {
 	return p;
 }
 
+bool is_dividable_particle(Particle p, uint idx) {
+	float rate = p.radius / p.threshold;
+	return rate > 0.95f;
+
+	// random divide
+	// return nrand(float2(idx, _Time)) < 0.1f;
+}
+
+uint divide_particle(uint idx, float2 offset) {
+
+	Particle parent = _Particles[idx];
+	Particle child = create();
+
+	// half parent and child's radius
+	float hr = parent.radius * 0.5f;
+	hr = max(hr, 0.1f);
+	parent.radius = child.radius = hr;
+
+	// displace parent and child's positions
+	float2 center = parent.position;
+	parent.position = center - offset;
+	child.position = center + offset;
+
+	// set child max radius
+	float x = nrand(float2(_Time, idx));
+	child.threshold = hr * lerp(1.25, 2.0, x);
+
+	// set child index from particle pool
+	uint cidx = _ParticlePoolConsume.Consume();
+	_Particles[cidx] = child;
+	
+	// update parent
+	_Particles[idx] = parent;
+
+	return cidx;
+}
+
+
+uint divide_particle(uint idx) {
+	Particle parent = _Particles[idx];
+
+	float2 offset = random_point_on_circle(float2(idx, _Time)) *
+					parent.radius * 0.25f;
+
+	Particle child = create();
+
+	// half parent and child's radius
+	float hr = parent.radius * 0.5f;
+	hr = max(hr, 0.1f);
+	parent.radius = child.radius = hr;
+
+	// displace parent and child's positions
+	float2 center = parent.position;
+	parent.position = center - offset;
+	child.position = center + offset;
+
+	// set child max radius
+	float x = nrand(float2(_Time, idx));
+	child.threshold = hr * lerp(1.25, 2.0, x);
+
+	// set child index from particle pool
+	uint cidx = _ParticlePoolConsume.Consume();
+	_Particles[cidx] = child;
+
+	// update parent
+	_Particles[idx] = parent;
+
+	return cidx;
+}
 
 [numthreads(SIMULATION_BLOCK_SIZE,1,1)]
 void Init (uint3 id : SV_DispatchThreadID)
@@ -111,6 +186,34 @@ void Update(uint3 id : SV_DispatchThreadID)
 	}
 	_Particles[idx] = p;
 }
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void GetDividable(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_Particles.GetDimensions(count, stride);
+	if (idx > count)
+		return;
+
+	Particle p = _Particles[idx];
+
+	if (p.alive && is_dividable_particle(p, idx)) {
+		_DividablePoolAppend.Append(idx);
+	}
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Divide(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _DivideCount)
+		return;
+
+	uint idx = _DividablePoolConsume.Consume();
+	divide_particle(idx);
+}
+
 
 
 //groupshared Particle sharedParticles[SIMULATION_BLOCK_SIZE];

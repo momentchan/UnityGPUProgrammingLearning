@@ -15,6 +15,8 @@ namespace CellularGrowth {
         [SerializeField] protected Gradient gradient;
         [SerializeField] protected int count = 8192;
 
+        [SerializeField] protected float divideInterval = 0.5f;
+        [SerializeField] protected int maxDivideCount = 16;
 
         [SerializeField] protected float size = 0.9f;
         [SerializeField] protected float grow = 0.25f;
@@ -33,32 +35,36 @@ namespace CellularGrowth {
         private uint[] drawArgs = new uint[5] { 0, 0, 0, 0, 0 };
 
         private enum ComputeKernel {
-            Init, Emit, Update
+            Init, Emit, Update, GetDividable, Divide
         }
         private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
         private GPUThreads gpuThreads;
 
         #region Shader Variable
-        private int particleBufferPropId     = Shader.PropertyToID("_Particles");
-        private int particleBufferReadPropId = Shader.PropertyToID("_ParticlesRead");
-        private int poolAppendPropId         = Shader.PropertyToID("_ParticlePoolAppend");
-        private int poolConsumePropId        = Shader.PropertyToID("_ParticlePoolConsume");
+        private int particleBufferPropId      = Shader.PropertyToID("_Particles");
+        private int particleBufferReadPropId  = Shader.PropertyToID("_ParticlesRead");
+        private int poolAppendPropId          = Shader.PropertyToID("_ParticlePoolAppend");
+        private int poolConsumePropId         = Shader.PropertyToID("_ParticlePoolConsume");
 
-        private int palletePropId            = Shader.PropertyToID("_Palette");
+        private int dividablePoolAppendPropId = Shader.PropertyToID("_DividablePoolAppend");
+        private int dividablePoolConsumePropId = Shader.PropertyToID("_DividablePoolConsume");
+        private int divideCountPropId         = Shader.PropertyToID("_DivideCount");                                      
 
-        private int timePropId               = Shader.PropertyToID("_Time");
-        private int deltaTimePropId          = Shader.PropertyToID("_DT");
-
-        private int emitPointPropId          = Shader.PropertyToID("_EmitPoint");
-        private int emitCountPropId          = Shader.PropertyToID("_EmitCount");
-
-        private int sizePropId               = Shader.PropertyToID("_Size");
-        private int local2WorldPropId        = Shader.PropertyToID("_Local2World");
-
-        private int growPropId               = Shader.PropertyToID("_Grow");
-        private int dragPropId               = Shader.PropertyToID("_Drag");
-        private int limitPropId              = Shader.PropertyToID("_Limit");
-        private int repulsionPropId          = Shader.PropertyToID("_Repulsion");
+        private int palletePropId             = Shader.PropertyToID("_Palette");
+                                              
+        private int timePropId                = Shader.PropertyToID("_Time");
+        private int deltaTimePropId           = Shader.PropertyToID("_DT");
+                                              
+        private int emitPointPropId           = Shader.PropertyToID("_EmitPoint");
+        private int emitCountPropId           = Shader.PropertyToID("_EmitCount");
+                                              
+        private int sizePropId                = Shader.PropertyToID("_Size");
+        private int local2WorldPropId         = Shader.PropertyToID("_Local2World");
+                                              
+        private int growPropId                = Shader.PropertyToID("_Grow");
+        private int dragPropId                = Shader.PropertyToID("_Drag");
+        private int limitPropId               = Shader.PropertyToID("_Limit");
+        private int repulsionPropId           = Shader.PropertyToID("_Repulsion");
         #endregion
 
         void Start() {
@@ -83,24 +89,26 @@ namespace CellularGrowth {
             emitCount = Mathf.Min(emitCount, CopyPoolSize(poolBuffer));
             if (emitCount <= 0) return;
 
-            compute.SetBuffer(kernelMap[ComputeKernel.Emit], particleBufferPropId, particleBuffer.Read);
-            compute.SetBuffer(kernelMap[ComputeKernel.Emit], poolConsumePropId, poolBuffer);
             compute.SetVector(emitPointPropId, emitPoint);
             compute.SetInt(emitCountPropId, emitCount);
 
-            compute.Dispatch(kernelMap[ComputeKernel.Emit], Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+            var kernel = kernelMap[ComputeKernel.Emit];
+            compute.SetBuffer(kernel, particleBufferPropId, particleBuffer.Read);
+            compute.SetBuffer(kernel, poolConsumePropId, poolBuffer);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
         
         private void UpdateParticlesKernel() {
-            compute.SetBuffer(kernelMap[ComputeKernel.Update], particleBufferReadPropId, particleBuffer.Read);
-            compute.SetBuffer(kernelMap[ComputeKernel.Update], particleBufferPropId, particleBuffer.Write);
 
             compute.SetFloat(growPropId, grow);
             compute.SetFloat(dragPropId, drag);
             compute.SetFloat(limitPropId, limit);
             compute.SetFloat(repulsionPropId, repulsion);
 
-            compute.Dispatch(kernelMap[ComputeKernel.Update], Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+            var kernel = kernelMap[ComputeKernel.Update];
+            compute.SetBuffer(kernel, particleBufferReadPropId, particleBuffer.Read);
+            compute.SetBuffer(kernel, particleBufferPropId, particleBuffer.Write);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
             particleBuffer.Swap();
         }
         
@@ -115,6 +123,36 @@ namespace CellularGrowth {
         }
         IEnumerator IDivder() {
             yield return null;
+            while (true) {
+                yield return new WaitForSeconds(divideInterval);
+                Divide();
+            }
+        }
+
+        private void Divide() {
+            GetDividableParticlesKernel();
+            DivideParticlesKernel(maxDivideCount);
+        }
+
+        private void GetDividableParticlesKernel() {
+            dividablePoolBuffer.SetCounterValue(0);
+
+            var kernel = kernelMap[ComputeKernel.GetDividable];
+            compute.SetBuffer(kernel, particleBufferPropId, particleBuffer.Read);
+            compute.SetBuffer(kernel, dividablePoolAppendPropId, dividablePoolBuffer);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+        }
+
+        private void DivideParticlesKernel(int maxDivideCount = 16) {
+            maxDivideCount = Mathf.Min(Mathf.Min(maxDivideCount, CopyPoolSize(dividablePoolBuffer)), CopyPoolSize(poolBuffer));
+            if (maxDivideCount <= 0) return;
+
+            var kernel = kernelMap[ComputeKernel.Divide];
+            compute.SetBuffer(kernel, particleBufferPropId, particleBuffer.Read);
+            compute.SetBuffer(kernel, poolConsumePropId, poolBuffer);
+            compute.SetBuffer(kernel, dividablePoolConsumePropId, dividablePoolBuffer);
+            compute.SetInt(divideCountPropId, maxDivideCount);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
 
         #region Initialize
@@ -130,9 +168,10 @@ namespace CellularGrowth {
         }
 
         private void InitParticlesKernel() {
-            compute.SetBuffer(kernelMap[ComputeKernel.Init], particleBufferPropId, particleBuffer.Read);
-            compute.SetBuffer(kernelMap[ComputeKernel.Init], poolAppendPropId, poolBuffer);
-            compute.Dispatch(kernelMap[ComputeKernel.Init], Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+            var kernel = kernelMap[ComputeKernel.Init];
+            compute.SetBuffer(kernel, particleBufferPropId, particleBuffer.Read);
+            compute.SetBuffer(kernel, poolAppendPropId, poolBuffer);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
 
         public void InitBuffers() {
