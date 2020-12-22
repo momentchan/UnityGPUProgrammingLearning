@@ -65,26 +65,15 @@ namespace StrangeAttractor {
             kernelMap = System.Enum.GetValues(typeof(ComputeKernel))
                 .Cast<ComputeKernel>()
                 .ToDictionary(t => t, t => computeShaderInstance.FindKernel(t.ToString()));
-            uint threadX, threadY, threadZ;
-            computeShaderInstance.GetKernelThreadGroupSizes(kernelMap[ComputeKernel.Emit], out threadX, out threadY, out threadZ);
-            gpuThreads = new GPUThreads(threadX, threadY, threadZ);
+            
+            gpuThreads = ComputeShaderUtil.GetThreadGroupSize(computeShaderInstance, kernelMap[ComputeKernel.Emit]);
+            ComputeShaderUtil.InitialCheck(instanceCount, gpuThreads);
 
             bufferPropId = Shader.PropertyToID("_Particles");
             timesPropId = Shader.PropertyToID("_Times");
 
             InitializeShaderUniforms();
-
-            InitialCheck();
             InitializeBuffers();
-        }
-
-        private void InitialCheck() {
-            Assert.IsTrue(SystemInfo.graphicsShaderLevel >= 50, "Under the DirectCompute5.0 (DX11 GPU) doesn't work");
-            Assert.IsTrue(gpuThreads.x * gpuThreads.y * gpuThreads.z <= DirectCompute5_0.MAX_PROCESS, "Resolution is too heigh");
-            Assert.IsTrue(gpuThreads.x <= DirectCompute5_0.MAX_X, "THREAD_X is too large");
-            Assert.IsTrue(gpuThreads.y <= DirectCompute5_0.MAX_Y, "THREAD_Y is too large");
-            Assert.IsTrue(gpuThreads.z <= DirectCompute5_0.MAX_Z, "THREAD_Z is too large");
-            Assert.IsTrue(instanceCount <= DirectCompute5_0.MAX_PROCESS, "particleNumber is too large");
         }
 
         private void InitializeBuffers() {

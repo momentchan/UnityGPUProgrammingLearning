@@ -1,4 +1,4 @@
-﻿Shader "Unlit/AttractorParticleRenderer"
+﻿Shader "StrangeAttractor/AttractorParticleRenderer"
 {
     Properties
     {

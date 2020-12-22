@@ -1,4 +1,4 @@
-﻿Shader "Unlit/ParticleRenderer"
+﻿Shader "Gravity N-Body Simulation/ParticleRenderer"
 {
     Properties
     {

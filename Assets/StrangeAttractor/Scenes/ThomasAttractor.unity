@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 648144143}
   - component: {fileID: 648144145}
   - component: {fileID: 648144144}
+  - component: {fileID: 648144146}
   m_Layer: 0
   m_Name: Thomas Attractor
   m_TagString: Untagged
@@ -213,6 +214,19 @@ MonoBehaviour:
     m_NumColorKeys: 5
     m_NumAlphaKeys: 2
   b: 0.19
+--- !u!114 &648144146
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 648144142}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29ebf8f6ee1721d4e95a94c871243faa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rotateSpeed: {x: 0.1, y: 0.1, z: 0.1}
 --- !u!1 &1630629369
 GameObject:
   m_ObjectHideFlags: 0

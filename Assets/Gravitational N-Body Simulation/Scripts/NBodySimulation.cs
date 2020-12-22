@@ -52,7 +52,7 @@ namespace GravitationalNBodySimulation {
             cs.SetFloat("_Damping", damping);
             cs.SetFloat("_SofteningSquared", softeningSquared);
             cs.SetInt("_ParticleNumbers", particleNumbers);
-            cs.SetInt("_DivideLevel", divideLevel);
+            cs.SetInt("_DivideLevel", Mathf.Max(divideLevel, 1));
 
             cs.SetBuffer(updateKernel.Index, "_ParticleBufferRead", bufferRead);
             cs.SetBuffer(updateKernel.Index, "_ParticleBufferWrite", bufferWrite);

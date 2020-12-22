@@ -266,19 +266,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4f68ded42f81ac4488261a921d592f8d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  MaxObjectNum: 16384
-  CohesionNeighborhoodRadius: 2
-  AlignmentNeighborhoodRadius: 2
-  SeparateNeighborhoodRadius: 1
-  MaxSpeed: 5
-  MaxSteerForce: 0.5
-  CohesionWeight: 1
-  AlignmentWeight: 1
-  SeparateWeight: 3
-  AvoidWallWeight: 10
-  WallCenter: {x: 0, y: 0, z: 0}
-  WallSize: {x: 32, y: 32, z: 32}
-  BoidsCS: {fileID: 7200000, guid: c9b744d45f07b8e4dba432cf3e0729d2, type: 3}
+  BoidsCS: {fileID: 7200000, guid: 69d830d7ea0a7ef40abec9f6d106fee5, type: 3}
+  maxObjectNum: 16384
+  cohesionNeighborhoodRadius: 2
+  alignmentNeighborhoodRadius: 2
+  separateNeighborhoodRadius: 1
+  cohesionWeight: 1
+  alignmentWeight: 1
+  separateWeight: 3
+  maxSpeed: 5
+  maxSteerForce: 0.5
+  avoidWallWeight: 10
+  wallCenter: {x: 0, y: 0, z: 0}
+  wallSize: {x: 32, y: 32, z: 32}
 --- !u!1 &1779908951
 GameObject:
   m_ObjectHideFlags: 0
