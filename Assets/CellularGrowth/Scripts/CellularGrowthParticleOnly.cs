@@ -13,34 +13,53 @@ namespace CellularGrowth {
         [SerializeField] protected Mesh mesh;
         [SerializeField] protected Material material;
         [SerializeField] protected Gradient gradient;
-        [SerializeField] protected int count;
-        [SerializeField] protected float size = 0.5f;
-        
+        [SerializeField] protected int count = 8192;
+
+
+        [SerializeField] protected float size = 0.9f;
+        [SerializeField] protected float grow = 0.25f;
+
+        [SerializeField] protected float drag = 0.995f;
+        [SerializeField] protected float limit = 3f;
+
+        [SerializeField] protected float repulsion = 1f;
+
+        private Texture2D pallete;
         private PingPongBuffer particleBuffer;
         private ComputeBuffer poolBuffer, countBuffer;
         private ComputeBuffer dividablePoolBuffer;
         private ComputeBuffer argsBuffer;
+        private int[] countArgs = new int[4] { 0, 1, 0, 0 };
+        private uint[] drawArgs = new uint[5] { 0, 0, 0, 0, 0 };
 
         private enum ComputeKernel {
-            Init, Emit
+            Init, Emit, Update
         }
         private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
         private GPUThreads gpuThreads;
 
-        private int[] countArgs = new int[4] { 0, 1, 0, 0 };
-        private uint[] drawArgs = new uint[5] { 0, 0, 0, 0, 0 };
+        #region Shader Variable
+        private int particleBufferPropId     = Shader.PropertyToID("_Particles");
+        private int particleBufferReadPropId = Shader.PropertyToID("_ParticlesRead");
+        private int poolAppendPropId         = Shader.PropertyToID("_ParticlePoolAppend");
+        private int poolConsumePropId        = Shader.PropertyToID("_ParticlePoolConsume");
 
-        private int particleBufferPropId;
-        private int poolAppendPropId, poolConsumePropId;
-        private int timePropId;
-        private int deltaTimePropId;
-        private int palletePropId;
-        private int emitPointPropId;
-        private int emitCountPropId;
-        private int local2WorldPropId;
-        private int sizePropId;
+        private int palletePropId            = Shader.PropertyToID("_Palette");
 
-        private Texture2D pallete;
+        private int timePropId               = Shader.PropertyToID("_Time");
+        private int deltaTimePropId          = Shader.PropertyToID("_DT");
+
+        private int emitPointPropId          = Shader.PropertyToID("_EmitPoint");
+        private int emitCountPropId          = Shader.PropertyToID("_EmitCount");
+
+        private int sizePropId               = Shader.PropertyToID("_Size");
+        private int local2WorldPropId        = Shader.PropertyToID("_Local2World");
+
+        private int growPropId               = Shader.PropertyToID("_Grow");
+        private int dragPropId               = Shader.PropertyToID("_Drag");
+        private int limitPropId              = Shader.PropertyToID("_Limit");
+        private int repulsionPropId          = Shader.PropertyToID("_Repulsion");
+        #endregion
 
         void Start() {
             Initialize();
@@ -54,17 +73,8 @@ namespace CellularGrowth {
                 EmitParticlesKernel(GetMousePoint());
             }
 
+            UpdateParticlesKernel();
             RenderParticles();
-        }
-
-        private void RenderParticles() {
-            material.SetPass(0);
-            material.SetBuffer(particleBufferPropId, particleBuffer.Read);
-            material.SetMatrix(local2WorldPropId, transform.localToWorldMatrix);
-            material.SetFloat(sizePropId, size);
-            material.SetTexture(palletePropId, pallete);
-
-            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, new Bounds(Vector3.zero, Vector3.one * 100f), argsBuffer);
         }
 
         private void EmitParticlesKernel(Vector2 emitPoint, int emitCount = 8) {
@@ -80,35 +90,49 @@ namespace CellularGrowth {
 
             compute.Dispatch(kernelMap[ComputeKernel.Emit], Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
+        
+        private void UpdateParticlesKernel() {
+            compute.SetBuffer(kernelMap[ComputeKernel.Update], particleBufferReadPropId, particleBuffer.Read);
+            compute.SetBuffer(kernelMap[ComputeKernel.Update], particleBufferPropId, particleBuffer.Write);
 
-        private int CopyPoolSize(ComputeBuffer buffer) {
-            countBuffer.SetData(countArgs);
-            ComputeBuffer.CopyCount(buffer, countBuffer, 0);
-            countBuffer.GetData(countArgs);
-            return countArgs[0];
+            compute.SetFloat(growPropId, grow);
+            compute.SetFloat(dragPropId, drag);
+            compute.SetFloat(limitPropId, limit);
+            compute.SetFloat(repulsionPropId, repulsion);
+
+            compute.Dispatch(kernelMap[ComputeKernel.Update], Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+            particleBuffer.Swap();
         }
+        
+        private void RenderParticles() {
+            material.SetPass(0);
+            material.SetBuffer(particleBufferPropId, particleBuffer.Read);
+            material.SetMatrix(local2WorldPropId, transform.localToWorldMatrix);
+            material.SetFloat(sizePropId, size);
+            material.SetTexture(palletePropId, pallete);
 
-        private Vector2 GetMousePoint() {
-            var p = Input.mousePosition;
-            var world = Camera.main.ScreenToWorldPoint(new Vector3(p.x, p.y, Camera.main.nearClipPlane));
-            var local = transform.InverseTransformPoint(world);
-            return local;
+            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, new Bounds(Vector3.zero, Vector3.one * 100f), argsBuffer);
         }
-
         IEnumerator IDivder() {
             yield return null;
         }
 
+        #region Initialize
         private void Initialize() {
             pallete = Texture2DUtil.CreateTexureFromGradient(gradient, 128);
 
             InitBuffers();
             InitKernels();
-            InitShaderUniforms();
 
             InitParticlesKernel();
 
             StartCoroutine(IDivder());
+        }
+
+        private void InitParticlesKernel() {
+            compute.SetBuffer(kernelMap[ComputeKernel.Init], particleBufferPropId, particleBuffer.Read);
+            compute.SetBuffer(kernelMap[ComputeKernel.Init], poolAppendPropId, poolBuffer);
+            compute.Dispatch(kernelMap[ComputeKernel.Init], Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
 
         public void InitBuffers() {
@@ -136,29 +160,31 @@ namespace CellularGrowth {
             gpuThreads = ComputeShaderUtil.GetThreadGroupSize(compute, kernelMap[ComputeKernel.Init]);
             ComputeShaderUtil.InitialCheck(count, gpuThreads);
         }
+        #endregion
 
-        public void InitShaderUniforms() {
-            particleBufferPropId = Shader.PropertyToID("_Particles");
-            poolAppendPropId     = Shader.PropertyToID("_ParticlePoolAppend");
-            poolConsumePropId    = Shader.PropertyToID("_ParticlePoolConsume");
-
-            palletePropId        = Shader.PropertyToID("_Palette");
-
-            timePropId           = Shader.PropertyToID("_Time");
-            deltaTimePropId      = Shader.PropertyToID("_DT");
-
-            emitPointPropId      = Shader.PropertyToID("_EmitPoint");
-            emitCountPropId      = Shader.PropertyToID("_EmitCount");
-
-            local2WorldPropId    = Shader.PropertyToID("_Local2World");
-
-            sizePropId           = Shader.PropertyToID("_Size");
+        #region Utility
+        private Vector2 GetMousePoint() {
+            var p = Input.mousePosition;
+            var world = Camera.main.ScreenToWorldPoint(new Vector3(p.x, p.y, Camera.main.nearClipPlane));
+            var local = transform.InverseTransformPoint(world);
+            return local;
         }
 
-        private void InitParticlesKernel() {
-            compute.SetBuffer(kernelMap[ComputeKernel.Init], particleBufferPropId, particleBuffer.Read);
-            compute.SetBuffer(kernelMap[ComputeKernel.Init], poolAppendPropId, poolBuffer);
-            compute.Dispatch(kernelMap[ComputeKernel.Init], Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+        private int CopyPoolSize(ComputeBuffer buffer) {
+            countBuffer.SetData(countArgs);
+            ComputeBuffer.CopyCount(buffer, countBuffer, 0);
+            countBuffer.GetData(countArgs);
+            return countArgs[0];
+        }
+        #endregion
+
+        private void OnDestroy() {
+            particleBuffer.Dispose();
+            poolBuffer.Dispose();
+            countBuffer.Dispose();
+            dividablePoolBuffer.Dispose();
+            argsBuffer.Dispose();
+            Destroy(pallete);
         }
     }
 }

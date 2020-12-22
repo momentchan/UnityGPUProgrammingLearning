@@ -1,15 +1,23 @@
 ﻿#pragma kernel Init
 #pragma kernel Emit
+#pragma kernel Update
+
 #define SIMULATION_BLOCK_SIZE 128
 #include "Particle.cginc"
 #include "../../Common/Libs/Random.cginc"
 
+StructuredBuffer<Particle> _ParticlesRead;
 RWStructuredBuffer<Particle> _Particles;
 AppendStructuredBuffer<uint> _ParticlePoolAppend;
 ConsumeStructuredBuffer<uint> _ParticlePoolConsume;
 
 float _Time;
 float _DT;
+
+float _Grow;
+float _Drag;
+float _Limit;
+float _Repulsion;
 
 float2 _EmitPoint;
 int _EmitCount;
@@ -57,5 +65,49 @@ void Emit(uint3 id : SV_DispatchThreadID)
 	p.position = _EmitPoint.xy + offset;
 	p.radius = nrand(id.xx + float2(_Time, 0));
 
+	_Particles[idx] = p;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void Update(uint3 id : SV_DispatchThreadID) 
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_ParticlesRead.GetDimensions(count, stride);
+	if (idx > count)
+		return;
+
+	Particle p = _ParticlesRead[idx];
+
+	if (p.alive) {
+		// Grow
+		p.radius = min(p.threshold, p.radius + _DT * _Grow * p.radius);
+
+		// Repulsion
+		for (uint i = 0; i < count; i++) {
+			Particle other = _ParticlesRead[i];
+
+			if (i == idx || !other.alive) 
+				continue;
+
+			float2 dir = p.position - other.position;
+			float l = length(dir);
+			float r = (p.radius + other.radius) * _Repulsion;
+			if (l < r) {
+				dir += random_point_on_circle(p.position + float2(i, idx)) * step(l, 0.0001);
+				p.velocity += normalize(dir) * (r - l);
+			}
+		}
+
+		float vl = length(p.velocity);
+		if (vl > 0) {
+			p.position += normalize(p.velocity) * min(vl, _Limit) * _DT;
+			p.velocity =  normalize(p.velocity) * min(vl * _Drag, _Limit);
+		}
+		else {
+			p.velocity = (float2)0;
+		}
+	}
 	_Particles[idx] = p;
 }

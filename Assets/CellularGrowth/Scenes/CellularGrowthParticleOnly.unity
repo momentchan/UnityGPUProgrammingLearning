@@ -266,7 +266,11 @@ MonoBehaviour:
     m_NumColorKeys: 7
     m_NumAlphaKeys: 2
   count: 8192
-  size: 0.5
+  size: 0.9
+  grow: 0.25
+  drag: 0.975
+  limit: 5
+  repulsion: 1
 --- !u!4 &1852301168
 Transform:
   m_ObjectHideFlags: 0

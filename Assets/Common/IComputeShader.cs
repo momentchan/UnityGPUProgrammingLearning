@@ -6,6 +6,5 @@ namespace Common {
     interface IComputeShader  {
         void InitBuffers();
         void InitKernels();
-        void InitShaderUniforms();
     }
 }
