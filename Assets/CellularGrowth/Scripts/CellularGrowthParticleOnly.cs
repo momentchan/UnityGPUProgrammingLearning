@@ -27,10 +27,9 @@ namespace CellularGrowth {
         [SerializeField] protected float repulsion = 1f;
 
         private Texture2D pallete;
-        private GPUObjectPintPongPool particlePool;
+        private GPUObjectPingPongPool particlePool;
         private GPUPool dividablePoolBuffer;
         private ComputeBuffer argsBuffer;
-        private int[] countArgs = new int[4] { 0, 1, 0, 0 };
         private uint[] drawArgs = new uint[5] { 0, 0, 0, 0, 0 };
 
         private enum ComputeKernel {
@@ -67,8 +66,44 @@ namespace CellularGrowth {
         #endregion
 
         void Start() {
-            Initialize();
+            pallete = Texture2DUtil.CreateTexureFromGradient(gradient, 128);
+
+            InitBuffers();
+            InitKernels();
+
+            InitParticlesKernel();
+
+            StartCoroutine(IDivder());
         }
+
+        #region Initialize
+        public void InitBuffers() {
+            particlePool = new GPUObjectPingPongPool(count, typeof(Particle));
+
+            dividablePoolBuffer = new GPUPool(count, typeof(uint));
+
+            drawArgs[0] = mesh.GetIndexCount(0);
+            drawArgs[1] = (uint)count;
+            argsBuffer = new ComputeBuffer(1, drawArgs.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
+            argsBuffer.SetData(drawArgs);
+        }
+
+        public void InitKernels() {
+            kernelMap = Enum.GetValues(typeof(ComputeKernel))
+                .Cast<ComputeKernel>()
+                .ToDictionary(t => t, t => compute.FindKernel(t.ToString()));
+
+            gpuThreads = ComputeShaderUtil.GetThreadGroupSize(compute, kernelMap[ComputeKernel.Init]);
+            ComputeShaderUtil.InitialCheck(count, gpuThreads);
+        }
+
+        private void InitParticlesKernel() {
+            var kernel = kernelMap[ComputeKernel.Init];
+            compute.SetBuffer(kernel, particleBufferPropId, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, poolAppendPropId, particlePool.PoolBuffer);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+        }
+        #endregion
 
         void Update() {
             compute.SetFloat(timePropId, Time.timeSinceLevelLoad);
@@ -82,6 +117,7 @@ namespace CellularGrowth {
             RenderParticles();
         }
 
+        #region Emit
         private void EmitParticlesKernel(Vector2 emitPoint, int emitCount = 8) {
 
             // make sure not exceed the pool buffer size
@@ -96,7 +132,9 @@ namespace CellularGrowth {
             compute.SetBuffer(kernel, poolConsumePropId, particlePool.PoolBuffer);
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
-        
+        #endregion
+
+        #region Update
         private void UpdateParticlesKernel() {
 
             compute.SetFloat(growPropId, grow);
@@ -110,7 +148,9 @@ namespace CellularGrowth {
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
             particlePool.ObjectPingPong.Swap();
         }
-        
+        #endregion
+
+        #region Render
         private void RenderParticles() {
             material.SetPass(0);
             material.SetBuffer(particleBufferPropId, particlePool.ObjectPingPong.Read);
@@ -120,6 +160,9 @@ namespace CellularGrowth {
 
             Graphics.DrawMeshInstancedIndirect(mesh, 0, material, new Bounds(Vector3.zero, Vector3.one * 100f), argsBuffer);
         }
+        #endregion
+
+        #region Divide
         IEnumerator IDivder() {
             yield return null;
             while (true) {
@@ -153,56 +196,14 @@ namespace CellularGrowth {
             compute.SetInt(divideCountPropId, maxDivideCount);
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
-
-        #region Initialize
-        private void Initialize() {
-            pallete = Texture2DUtil.CreateTexureFromGradient(gradient, 128);
-
-            InitBuffers();
-            InitKernels();
-
-            InitParticlesKernel();
-
-            StartCoroutine(IDivder());
-        }
-
-        private void InitParticlesKernel() {
-            var kernel = kernelMap[ComputeKernel.Init];
-            compute.SetBuffer(kernel, particleBufferPropId, particlePool.ObjectPingPong.Read);
-            compute.SetBuffer(kernel, poolAppendPropId, particlePool.PoolBuffer);
-            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
-        }
-
-        public void InitBuffers() {
-            particlePool = new GPUObjectPintPongPool(count, typeof(Particle));
-
-            dividablePoolBuffer = new GPUPool(count, typeof(uint));
-
-            drawArgs[0] = mesh.GetIndexCount(0);
-            drawArgs[1] = (uint)count;
-            argsBuffer = new ComputeBuffer(1, drawArgs.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-            argsBuffer.SetData(drawArgs);
-        }
-
-        public void InitKernels() {
-            kernelMap = Enum.GetValues(typeof(ComputeKernel))
-                .Cast<ComputeKernel>()
-                .ToDictionary(t => t, t => compute.FindKernel(t.ToString()));
-
-            gpuThreads = ComputeShaderUtil.GetThreadGroupSize(compute, kernelMap[ComputeKernel.Init]);
-            ComputeShaderUtil.InitialCheck(count, gpuThreads);
-        }
         #endregion
 
-        #region Utility
         private Vector2 GetMousePoint() {
             var p = Input.mousePosition;
             var world = Camera.main.ScreenToWorldPoint(new Vector3(p.x, p.y, Camera.main.nearClipPlane));
             var local = transform.InverseTransformPoint(world);
             return local;
         }
-
-        #endregion
 
         private void OnDestroy() {
             particlePool.Dispose();

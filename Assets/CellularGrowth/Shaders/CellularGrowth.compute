@@ -123,6 +123,7 @@ void Init (uint3 id : SV_DispatchThreadID)
 	p.alive = false;
 	_Particles[idx] = p;
 
+	// Add inactive idx to pool buffer
 	_ParticlePoolAppend.Append(idx);
 }
 

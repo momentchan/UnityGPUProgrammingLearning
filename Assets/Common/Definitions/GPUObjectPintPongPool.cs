@@ -5,13 +5,13 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace Common {
-    public class GPUObjectPintPongPool : GPUPool {
+    public class GPUObjectPingPongPool : GPUPool {
 
         public PingPongBuffer ObjectPingPong => pingpong;
 
         protected PingPongBuffer pingpong;
 
-        public GPUObjectPintPongPool(int count, Type type) : base(count, type) {
+        public GPUObjectPingPongPool(int count, Type type) : base(count, type) {
             pingpong = new PingPongBuffer(count, type);
         }
 
