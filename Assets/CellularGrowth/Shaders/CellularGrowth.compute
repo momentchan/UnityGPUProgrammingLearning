@@ -1,11 +1,15 @@
 ﻿#pragma kernel InitParticles
 #pragma kernel InitEdges
 #pragma kernel EmitParticles
-#pragma kernel Update
+#pragma kernel UpdateParticles
+#pragma kernel UpdateEdges
+#pragma kernel SpringEdges
 #pragma kernel GetDividableParticles
 #pragma kernel GetDividableEdges
 #pragma kernel DivideParticles
 #pragma kernel DivideUnconnectedParticles
+#pragma kernel DivideEdgesClosed
+#pragma kernel DivideEdgesBranch
 
 #define SIMULATION_BLOCK_SIZE 128
 #include "Particle.cginc"
@@ -37,6 +41,7 @@ int _EmitCount;
 
 uint _DivideCount;
 int _MaxLink;
+float _Spring;
 
 Particle create() {
 	
@@ -95,37 +100,13 @@ uint divide_particle(uint idx, float2 offset) {
 	return cidx;
 }
 
+
 uint divide_particle(uint idx) {
 	Particle parent = _Particles[idx];
-
-	float2 offset = random_point_on_circle(float2(idx, _Time)) *
-					parent.radius * 0.25f;
-
-	Particle child = create();
-
-	// half parent and child's radius
-	float hr = parent.radius * 0.5f;
-	hr = max(hr, 0.1f);
-	parent.radius = child.radius = hr;
-
-	// displace parent and child's positions
-	float2 center = parent.position;
-	parent.position = center - offset;
-	child.position = center + offset;
-
-	// set child max radius
-	float x = nrand(float2(_Time, idx));
-	child.threshold = hr * lerp(1.25, 2.0, x);
-
-	// set child index from particle pool
-	uint cidx = _ParticlePoolConsume.Consume();
-	_Particles[cidx] = child;
-
-	// update parent
-	_Particles[idx] = parent;
-
-	return cidx;
+	float2 offset = random_point_on_circle(float2(idx, _Time)) * 0.1f;
+	return divide_particle(idx, offset);
 }
+
 
 [numthreads(SIMULATION_BLOCK_SIZE,1,1)]
 void InitParticles(uint3 id : SV_DispatchThreadID)
@@ -163,7 +144,7 @@ void EmitParticles(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
-void Update(uint3 id : SV_DispatchThreadID) 
+void UpdateParticles(uint3 id : SV_DispatchThreadID)
 {
 	uint idx = id.x;
 
@@ -205,6 +186,83 @@ void Update(uint3 id : SV_DispatchThreadID)
 	}
 	_Particles[idx] = p;
 }
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void UpdateEdges(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_Edges.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	Edge e = _Edges[idx];
+
+	e.force = float2(0, 0);
+
+	if (!e.alive) {
+		_Edges[idx] = e;
+		return;
+	}
+
+	Particle pa = _Particles[e.a];
+	Particle pb = _Particles[e.b];
+	if (!pa.alive || !pb.alive) {
+		_Edges[idx] = e;
+		return;
+	}
+
+	// apply force if two particles are too far or too close
+	float2 dir = pa.position - pb.position;
+	float r = pa.radius + pb.radius;
+	float len = length(dir);
+	
+	if (abs(len - r) > 0) {
+		float l = (len - r) / r;
+		float2 f = normalize(dir) * l * _Spring;
+		e.force = f;
+	}
+
+	_Edges[idx] = e;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void SpringEdges(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_Particles.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	Particle p = _Particles[idx];
+	if (!p.alive || p.links == 0)
+		return;
+
+	// reduce spring force by the # of links
+	float dif = 1.0 / p.links;
+	
+	int iidx = (int)idx;
+
+	_Edges.GetDimensions(count, stride);
+
+	for (uint i = 0; i < count; i++) {
+		Edge e = _Edges[i];
+		if (!e.alive)
+			continue;
+
+		if (e.a == iidx) {
+			p.velocity -= e.force * dif;
+		}
+		if (e.b == iidx) {
+			p.velocity += e.force * dif;
+		}
+	}
+	_Particles[idx] = p;
+}
+
 
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
 void GetDividableParticles(uint3 id : SV_DispatchThreadID)
@@ -301,6 +359,58 @@ void DivideUnconnectedParticles(uint3 id : SV_DispatchThreadID)
 
 	connect(idx, cidx);
 }
+
+void divide_edge_closed(uint idx) {
+
+	Edge e = _Edges[idx];
+	Particle pa = _Particles[e.a];
+	Particle pb = _Particles[e.b];
+
+	if (pa.links == 1 || pb.links == 1) {
+		//build triangle
+		uint cidx = divide_particle(e.a);
+		connect(e.a, cidx);
+		connect(cidx, e.b);
+	}
+	else {
+		float2 dir = pb.position - pa.position;
+		float2 offset = normalize(dir) * pa.radius * 0.25;
+		uint cidx = divide_particle(e.a, offset);
+
+		// connect parent and child
+		connect(e.a, cidx);
+
+		// break edge between parent and oppsite 
+		// and connect oppsite and child
+		InterlockedAdd(_Particles[e.a].links, -1);
+		InterlockedAdd(_Particles[cidx].links, 1);
+		e.a = cidx;
+	}
+	_Edges[idx] = e;
+}
+
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void DivideEdgesClosed(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _DivideCount)
+		return;
+
+	uint idx = _DividablePoolConsume.Consume();
+	divide_edge_closed(idx);
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void DivideEdgesBranch(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _DivideCount)
+		return;
+
+	uint idx = _DividablePoolConsume.Consume();
+	//divide_edge_branch(idx);
+}
+
+
 
 //groupshared Particle sharedParticles[SIMULATION_BLOCK_SIZE];
 //

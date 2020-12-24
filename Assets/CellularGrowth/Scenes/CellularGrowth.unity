@@ -265,8 +265,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   compute: {fileID: 7200000, guid: e7da803824bdd6d489be8e78438aec4c, type: 3}
-  particleMesh: {fileID: 0}
-  edgeMesh: {fileID: 0}
   particleMat: {fileID: 2100000, guid: a9a42626aeb15d64e8f380fff0d8d2dc, type: 2}
   edgeMat: {fileID: 2100000, guid: 308f335855845f54e910e5b7278e3933, type: 2}
   gradient:
@@ -301,10 +299,10 @@ MonoBehaviour:
   count: 8192
   size: 0.9
   grow: 0.25
-  pattern: 1
+  pattern: 0
   iterations: 2
-  divideInterval: 0.5
-  maxDivideCount: 16
+  divideInterval: 0.25
+  maxDivideCount: 64
   maxLink: 4
   drag: 0.995
   limit: 1

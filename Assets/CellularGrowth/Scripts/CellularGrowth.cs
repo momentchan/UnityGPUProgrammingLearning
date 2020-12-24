@@ -9,7 +9,6 @@ namespace CellularGrowth {
     public class CellularGrowth : MonoBehaviour, IComputeShader {
 
         [SerializeField] protected ComputeShader compute;
-        [SerializeField] protected Mesh particleMesh, edgeMesh;
         [SerializeField] protected Material particleMat, edgeMat;
         [SerializeField] protected Gradient gradient;
         [SerializeField] protected int count = 8192;
@@ -29,25 +28,32 @@ namespace CellularGrowth {
         [SerializeField] protected float repulsion = 1f;
         [SerializeField] protected float spring = 5f;
 
+        private Mesh particleMesh, edgeMesh;
         private Texture2D pallete;
         private GPUObjectPingPongPool particlePool;
         private GPUObjectPool         edgePool;
         private GPUPool               dividablePool;
-        private ComputeBuffer         particleArgsBuffer, edgeArgsBuffer;
-
-        private int[] countArgs         = new int[4]  { 0, 1, 0, 0 };
-        private uint[] particleDrawArgs = new uint[5] { 0, 0, 0, 0, 0 };
-        private uint[] edgeDrawArgs     = new uint[5] { 0, 0, 0, 0, 0 };
-
-        private enum ComputeKernel {
-            InitParticles, InitEdges, EmitParticles, Update, GetDividableEdges, DivideUnconnectedParticles
-        }
-        private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
-        private GPUThreads gpuThreads;
+        private GPUArgsBuffer         particleArgsBuffer, edgeArgsBuffer;
 
         private enum DividePattern {
             Closed, Branch
         }
+
+        private enum ComputeKernel {
+            InitParticles, 
+            InitEdges, 
+            EmitParticles, 
+            UpdateParticles, 
+            UpdateEdges, 
+            SpringEdges, 
+            GetDividableEdges, 
+            DivideUnconnectedParticles,
+            DivideEdgesClosed,
+            DivideEdgesBranch
+        }
+
+        private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
+        private GPUThreads gpuThreads;
 
         #region Shader Variable
         private int particlesProp            = Shader.PropertyToID("_Particles");
@@ -79,6 +85,7 @@ namespace CellularGrowth {
         private int dragProp                 = Shader.PropertyToID("_Drag");
         private int limitProp                = Shader.PropertyToID("_Limit");
         private int repulsionProp            = Shader.PropertyToID("_Repulsion");
+        private int springProp               = Shader.PropertyToID("_Spring");
         #endregion
 
         void Start() {
@@ -102,16 +109,10 @@ namespace CellularGrowth {
             dividablePool = new GPUPool(count, typeof(uint));
 
             particleMesh = MeshUtil.CreateQuad();
-            particleDrawArgs[0] = particleMesh.GetIndexCount(0);
-            particleDrawArgs[1] = (uint)count;
-            particleArgsBuffer = new ComputeBuffer(1, particleDrawArgs.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-            particleArgsBuffer.SetData(particleDrawArgs);
+            particleArgsBuffer = new GPUArgsBuffer(particleMesh.GetIndexCount(0), (uint)count);
 
             edgeMesh = MeshUtil.CreateLine();
-            edgeDrawArgs[0] = edgeMesh.GetIndexCount(0);
-            edgeDrawArgs[1] = (uint)count;
-            edgeArgsBuffer = new ComputeBuffer(1, edgeDrawArgs.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-            edgeArgsBuffer.SetData(edgeDrawArgs);
+            edgeArgsBuffer = new GPUArgsBuffer(edgeMesh.GetIndexCount(0), (uint)count);
         }
 
         public void InitKernels() {
@@ -145,12 +146,12 @@ namespace CellularGrowth {
             emitCount = Mathf.Min(emitCount, particlePool.CopyPoolSize());
             if (emitCount <= 0) return;
 
-            compute.SetVector(emitPointProp, emitPoint);
-            compute.SetInt(emitCountProp, emitCount);
-
             var kernel = kernelMap[ComputeKernel.EmitParticles];
             compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
             compute.SetBuffer(kernel, particlePoolConsumeProp, particlePool.PoolBuffer);
+            compute.SetVector(emitPointProp, emitPoint);
+            compute.SetInt(emitCountProp, emitCount);
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
         #endregion
@@ -160,23 +161,42 @@ namespace CellularGrowth {
             compute.SetFloat(deltaTimeProp, Time.deltaTime);
 
             for (var i = 0; i < iterations; i++) {
+                UpdateEdgesKernel();
+                SpringEdgesKernel();
                 UpdateParticlesKernel();
             }
             Render();
         }
-
+        
         #region Update
         private void UpdateParticlesKernel() {
+            var kernel = kernelMap[ComputeKernel.UpdateParticles];
+            compute.SetBuffer(kernel, particlesReadProp, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Write);
             compute.SetFloat(growProp, grow);
             compute.SetFloat(dragProp, drag);
             compute.SetFloat(limitProp, limit);
             compute.SetFloat(repulsionProp, repulsion);
 
-            var kernel = kernelMap[ComputeKernel.Update];
-            compute.SetBuffer(kernel, particlesReadProp, particlePool.ObjectPingPong.Read);
-            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Write);
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+
             particlePool.ObjectPingPong.Swap();
+        }
+
+        private void UpdateEdgesKernel() {
+            var kernel = kernelMap[ComputeKernel.UpdateEdges];
+            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, edgesProp, edgePool.ObjectBuffer);
+            compute.SetFloat(springProp, spring);
+
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+        }
+
+        private void SpringEdgesKernel() {
+            var kernel = kernelMap[ComputeKernel.SpringEdges];
+            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, edgesProp, edgePool.ObjectBuffer);
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
         #endregion
 
@@ -188,14 +208,14 @@ namespace CellularGrowth {
             particleMat.SetMatrix(local2WorldProp, transform.localToWorldMatrix);
             particleMat.SetFloat(sizeProp, size);
             particleMat.SetTexture(palleteProp, pallete);
-            Graphics.DrawMeshInstancedIndirect(particleMesh, 0, particleMat, new Bounds(Vector3.zero, Vector3.one * 100f), particleArgsBuffer);
+            Graphics.DrawMeshInstancedIndirect(particleMesh, 0, particleMat, new Bounds(Vector3.zero, Vector3.one * 100f), particleArgsBuffer.Buffer);
 
             // render edges
             edgeMat.SetPass(0);
             edgeMat.SetBuffer(particlesProp, particlePool.ObjectPingPong.Read);
             edgeMat.SetBuffer(edgesProp, edgePool.ObjectBuffer);
             edgeMat.SetMatrix(local2WorldProp, transform.localToWorldMatrix);
-            Graphics.DrawMeshInstancedIndirect(edgeMesh, 0, edgeMat, new Bounds(Vector3.zero, Vector3.one * 100f), edgeArgsBuffer);
+            Graphics.DrawMeshInstancedIndirect(edgeMesh, 0, edgeMat, new Bounds(Vector3.zero, Vector3.one * 100f), edgeArgsBuffer.Buffer);
         }
         #endregion
 
@@ -216,34 +236,51 @@ namespace CellularGrowth {
             if (dividableEdgesCount == 0) {
                 // divide particles without links
                 DivideUnconnectedParticles(); 
+            } else {
+                DivideEdgesKernel(dividableEdgesCount, maxDivideCount);
             }
-
-            //DivideParticlesKernel(maxDivideCount);
         }
 
         private void GetDividableEdgesKernel() {
             dividablePool.ResetPoolCounter();
 
-            compute.SetInt(maxLinkProp, maxLink);
-
             var kernel = kernelMap[ComputeKernel.GetDividableEdges];
             compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
             compute.SetBuffer(kernel, edgesProp, edgePool.ObjectBuffer);
             compute.SetBuffer(kernel, dividablePoolAppendProp, dividablePool.PoolBuffer);
+            compute.SetInt(maxLinkProp, maxLink);
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
 
         private void DivideUnconnectedParticles() {
-
             var kernel = kernelMap[ComputeKernel.DivideUnconnectedParticles];
             compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
             compute.SetBuffer(kernel, particlePoolConsumeProp, particlePool.PoolBuffer);
             compute.SetBuffer(kernel, edgesProp, edgePool.ObjectBuffer);
             compute.SetBuffer(kernel, edgePoolConsumeProp, edgePool.PoolBuffer);
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
-        #endregion
+        private void DivideEdgesKernel(int dividableEdgesCount, int divideCount) {
+            divideCount = Mathf.Min(dividableEdgesCount, divideCount);
+            divideCount = Mathf.Min(particlePool.CopyPoolSize(), divideCount);
+            divideCount = Mathf.Min(edgePool.CopyPoolSize(), divideCount);
+            if (divideCount <= 0) return;
 
+            var kernel = pattern == DividePattern.Closed ? 
+                         kernelMap[ComputeKernel.DivideEdgesClosed] :
+                         kernelMap[ComputeKernel.DivideEdgesBranch];
+            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, particlePoolConsumeProp, particlePool.PoolBuffer);
+            compute.SetBuffer(kernel, edgesProp, edgePool.ObjectBuffer);
+            compute.SetBuffer(kernel, edgePoolConsumeProp, edgePool.PoolBuffer);
+            compute.SetBuffer(kernel, dividablePoolConsumeProp, dividablePool.PoolBuffer);
+            compute.SetInt(divideCountProp, divideCount);
+
+            compute.Dispatch(kernel, Mathf.CeilToInt(1f * divideCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+        }
+        #endregion
 
         private void OnDestroy() {
             particlePool.Dispose();

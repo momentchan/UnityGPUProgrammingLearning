@@ -28,11 +28,14 @@ namespace CellularGrowth {
         private Texture2D pallete;
         private GPUObjectPingPongPool particlePool;
         private GPUPool dividablePool;
-        private ComputeBuffer argsBuffer;
-        private uint[] drawArgs = new uint[5] { 0, 0, 0, 0, 0 };
+        private GPUArgsBuffer argsBuffer;
 
         private enum ComputeKernel {
-            InitParticles, EmitParticles, Update, GetDividableParticles, DivideParticles
+            InitParticles, 
+            EmitParticles, 
+            UpdateParticles, 
+            GetDividableParticles, 
+            DivideParticles
         }
         private Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
         private GPUThreads gpuThreads;
@@ -82,10 +85,7 @@ namespace CellularGrowth {
             dividablePool = new GPUPool(count, typeof(uint));
 
             mesh = MeshUtil.CreateQuad();
-            drawArgs[0] = mesh.GetIndexCount(0);
-            drawArgs[1] = (uint)count;
-            argsBuffer = new ComputeBuffer(1, drawArgs.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-            argsBuffer.SetData(drawArgs);
+            argsBuffer = new GPUArgsBuffer(mesh.GetIndexCount(0), (uint)count);
         }
 
         public void InitKernels() {
@@ -119,32 +119,32 @@ namespace CellularGrowth {
 
         #region Emit
         private void EmitParticlesKernel(Vector2 emitPoint, int emitCount = 8) {
-
             // make sure not exceed the pool buffer size
             emitCount = Mathf.Min(emitCount, particlePool.CopyPoolSize());
             if (emitCount <= 0) return;
 
-            compute.SetVector(emitPointProp, emitPoint);
-            compute.SetInt(emitCountProp, emitCount);
-
             var kernel = kernelMap[ComputeKernel.EmitParticles];
             compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
             compute.SetBuffer(kernel, particlePoolConsumeProp, particlePool.PoolBuffer);
+            compute.SetVector(emitPointProp, emitPoint);
+            compute.SetInt(emitCountProp, emitCount);
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * emitCount / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
         #endregion
 
         #region Update
         private void UpdateParticlesKernel() {
+            var kernel = kernelMap[ComputeKernel.UpdateParticles];
+            compute.SetBuffer(kernel, particlesReadProp, particlePool.ObjectPingPong.Read);
+            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Write);
             compute.SetFloat(growProp, grow);
             compute.SetFloat(dragProp, drag);
             compute.SetFloat(limitProp, limit);
             compute.SetFloat(repulsionProp, repulsion);
 
-            var kernel = kernelMap[ComputeKernel.Update];
-            compute.SetBuffer(kernel, particlesReadProp, particlePool.ObjectPingPong.Read);
-            compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Write);
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
+
             particlePool.ObjectPingPong.Swap();
         }
         #endregion
@@ -157,7 +157,7 @@ namespace CellularGrowth {
             material.SetFloat(sizeProp, size);
             material.SetTexture(palleteProp, pallete);
 
-            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, new Bounds(Vector3.zero, Vector3.one * 100f), argsBuffer);
+            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, new Bounds(Vector3.zero, Vector3.one * 100f), argsBuffer.Buffer);
         }
         #endregion
 
@@ -176,11 +176,11 @@ namespace CellularGrowth {
         }
 
         private void GetDividableParticlesKernel() {
-            dividablePool.ResetPoolCounter();
-
             var kernel = kernelMap[ComputeKernel.GetDividableParticles];
             compute.SetBuffer(kernel, particlesProp, particlePool.ObjectPingPong.Read);
             compute.SetBuffer(kernel, dividablePoolAppendProp, dividablePool.PoolBuffer);
+            dividablePool.ResetPoolCounter();
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
 
@@ -193,6 +193,7 @@ namespace CellularGrowth {
             compute.SetBuffer(kernel, particlePoolConsumeProp, particlePool.PoolBuffer);
             compute.SetBuffer(kernel, dividablePoolConsumeProp, dividablePool.PoolBuffer);
             compute.SetInt(divideCountProp, maxDivideCount);
+
             compute.Dispatch(kernel, Mathf.CeilToInt(1f * count / gpuThreads.x), gpuThreads.y, gpuThreads.z);
         }
         #endregion
