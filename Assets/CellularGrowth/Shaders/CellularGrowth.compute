@@ -1,113 +1,31 @@
-﻿#pragma kernel InitParticles
-#pragma kernel InitEdges
+﻿// Particles
+#pragma kernel InitParticles
 #pragma kernel EmitParticles
 #pragma kernel UpdateParticles
+#pragma kernel GetDividableParticles
+#pragma kernel DivideParticles
+
+// Edges
+#pragma kernel InitEdges
 #pragma kernel UpdateEdges
 #pragma kernel SpringEdges
-#pragma kernel GetDividableParticles
 #pragma kernel GetDividableEdges
-#pragma kernel DivideParticles
 #pragma kernel DivideUnconnectedParticles
 #pragma kernel DivideEdgesClosed
 #pragma kernel DivideEdgesBranch
 
 #define SIMULATION_BLOCK_SIZE 128
+
+#include "../../Common/Libs/Random.cginc"
 #include "Particle.cginc"
 #include "Edge.cginc"
-#include "../../Common/Libs/Random.cginc"
+#include "Common.cginc"
+#include "ParticleFunc.cginc"
+#include "EdgeFunc.cginc"
 
-StructuredBuffer<Particle> _ParticlesRead;
-RWStructuredBuffer<Particle> _Particles;
-AppendStructuredBuffer<uint> _ParticlePoolAppend;
-ConsumeStructuredBuffer<uint> _ParticlePoolConsume;
-
-AppendStructuredBuffer<uint> _DividablePoolAppend;
-ConsumeStructuredBuffer<uint> _DividablePoolConsume;
-
-RWStructuredBuffer<Edge> _Edges;
-AppendStructuredBuffer<uint> _EdgePoolAppend;
-ConsumeStructuredBuffer<uint> _EdgePoolConsume;
-
-float _Time;
-float _DT;
-
-float _Grow;
-float _Drag;
-float _Limit;
-float _Repulsion;
-
-float2 _EmitPoint;
-int _EmitCount;
-
-uint _DivideCount;
-int _MaxLink;
-float _Spring;
-
-Particle create() {
-	
-	Particle p;
-	p.position = (float2)0;
-	p.velocity = (float2)0;
-	p.radius = p.threshold = 1;
-	p.links = 0;
-	p.alive = true;
-	return p;
-}
-
-bool is_dividable_particle(Particle p, uint idx) {
-	
-	float rate = p.radius / p.threshold;
-	return rate > 0.95f;
-
-	// random divide
-	// return nrand(float2(idx, _Time)) < 0.1f;
-}
-
-bool is_dividable_edge(Edge e, uint idx) {
-
-	Particle pa = _Particles[e.a];
-	Particle pb = _Particles[e.b];
-	
-	return !(pa.links >= _MaxLink && pb.links >= _MaxLink) && is_dividable_particle(pa, e.a) && is_dividable_particle(pb, e.b);
-}
-
-uint divide_particle(uint idx, float2 offset) {
-
-	Particle parent = _Particles[idx];
-	Particle child = create();
-
-	// half parent and child's radius
-	float hr = parent.radius * 0.5f;
-	hr = max(hr, 0.1f);
-	parent.radius = child.radius = hr;
-
-	// displace parent and child's positions
-	float2 center = parent.position;
-	parent.position = center - offset;
-	child.position = center + offset;
-
-	// set child max radius
-	float x = nrand(float2(_Time, idx));
-	child.threshold = hr * lerp(1.25, 2.0, x);
-
-	// set child index from particle pool
-	uint cidx = _ParticlePoolConsume.Consume();
-	_Particles[cidx] = child;
-	
-	// update parent
-	_Particles[idx] = parent;
-
-	return cidx;
-}
-
-
-uint divide_particle(uint idx) {
-	Particle parent = _Particles[idx];
-	float2 offset = random_point_on_circle(float2(idx, _Time)) * 0.1f;
-	return divide_particle(idx, offset);
-}
-
-
+//////////////////////////////////////////////////////////////////////
+// Particle Kernels
+//////////////////////////////////////////////////////////////////////
 [numthreads(SIMULATION_BLOCK_SIZE,1,1)]
 void InitParticles(uint3 id : SV_DispatchThreadID)
 {
@@ -188,6 +106,52 @@ void UpdateParticles(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void GetDividableParticles(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_Particles.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	Particle p = _Particles[idx];
+
+	if (p.alive && is_dividable_particle(p, idx)) {
+		_DividablePoolAppend.Append(idx);
+	}
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void DivideParticles(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _DivideCount)
+		return;
+
+	uint idx = _DividablePoolConsume.Consume();
+	divide_particle(idx);
+}
+
+//////////////////////////////////////////////////////////////////////
+// Edges Kernels
+//////////////////////////////////////////////////////////////////////
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void InitEdges(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+
+	uint count, stride;
+	_Edges.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	_Edges[idx].alive = false;
+
+	// Add inactive idx to pool buffer
+	_EdgePoolAppend.Append(idx);
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
 void UpdateEdges(uint3 id : SV_DispatchThreadID)
 {
 	uint idx = id.x;
@@ -263,51 +227,6 @@ void SpringEdges(uint3 id : SV_DispatchThreadID)
 	_Particles[idx] = p;
 }
 
-
-[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
-void GetDividableParticles(uint3 id : SV_DispatchThreadID)
-{
-	uint idx = id.x;
-
-	uint count, stride;
-	_Particles.GetDimensions(count, stride);
-	if (idx >= count)
-		return;
-
-	Particle p = _Particles[idx];
-
-	if (p.alive && is_dividable_particle(p, idx)) {
-		_DividablePoolAppend.Append(idx);
-	}
-}
-
-[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
-void DivideParticles(uint3 id : SV_DispatchThreadID)
-{
-	if (id.x >= _DivideCount)
-		return;
-
-	uint idx = _DividablePoolConsume.Consume();
-	divide_particle(idx);
-}
-
-
-[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
-void InitEdges(uint3 id : SV_DispatchThreadID)
-{
-	uint idx = id.x;
-
-	uint count, stride;
-	_Edges.GetDimensions(count, stride);
-	if (idx >= count)
-		return;
-
-	_Edges[idx].alive = false;
-
-	// Add inactive idx to pool buffer
-	_EdgePoolAppend.Append(idx);
-}
-
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
 void GetDividableEdges(uint3 id : SV_DispatchThreadID)
 {
@@ -323,21 +242,6 @@ void GetDividableEdges(uint3 id : SV_DispatchThreadID)
 	if (e.alive && is_dividable_edge(e, idx)) {
 		_DividablePoolAppend.Append(idx);
 	}
-}
-
-void connect(int a, int b) {
-
-	uint eidx = _EdgePoolConsume.Consume();
-
-	InterlockedAdd(_Particles[a].links, 1);
-	InterlockedAdd(_Particles[b].links, 1);
-
-	Edge e;
-	e.a = a;
-	e.b = b;
-	e.force = float2(0, 0);
-	e.alive = true;
-	_Edges[eidx] = e;
 }
 
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
@@ -360,36 +264,6 @@ void DivideUnconnectedParticles(uint3 id : SV_DispatchThreadID)
 	connect(idx, cidx);
 }
 
-void divide_edge_closed(uint idx) {
-
-	Edge e = _Edges[idx];
-	Particle pa = _Particles[e.a];
-	Particle pb = _Particles[e.b];
-
-	if (pa.links == 1 || pb.links == 1) {
-		//build triangle
-		uint cidx = divide_particle(e.a);
-		connect(e.a, cidx);
-		connect(cidx, e.b);
-	}
-	else {
-		float2 dir = pb.position - pa.position;
-		float2 offset = normalize(dir) * pa.radius * 0.25;
-		uint cidx = divide_particle(e.a, offset);
-
-		// connect parent and child
-		connect(e.a, cidx);
-
-		// break edge between parent and oppsite 
-		// and connect oppsite and child
-		InterlockedAdd(_Particles[e.a].links, -1);
-		InterlockedAdd(_Particles[cidx].links, 1);
-		e.a = cidx;
-	}
-	_Edges[idx] = e;
-}
-
-
 [numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
 void DivideEdgesClosed(uint3 id : SV_DispatchThreadID)
 {
@@ -407,60 +281,5 @@ void DivideEdgesBranch(uint3 id : SV_DispatchThreadID)
 		return;
 
 	uint idx = _DividablePoolConsume.Consume();
-	//divide_edge_branch(idx);
+	divide_edge_branch(idx);
 }
-
-
-
-//groupshared Particle sharedParticles[SIMULATION_BLOCK_SIZE];
-//
-//[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
-//void Update(uint3 id : SV_DispatchThreadID, uint GI : SV_GroupIndex)
-//{
-//	uint idx = id.x;
-//
-//	uint count, stride;
-//	_ParticlesRead.GetDimensions(count, stride);
-//
-//	Particle p = _ParticlesRead[idx];
-//
-//	// Grow
-//	if(p.alive)
-//		p.radius = min(p.threshold, p.radius + _DT * _Grow * p.radius);
-//
-//	// Repulsion
-//	[loop]
-//	for (uint N_block_ID = 0; N_block_ID < (uint)count; N_block_ID += SIMULATION_BLOCK_SIZE) {
-//
-//		sharedParticles[GI] = _ParticlesRead[N_block_ID + GI];
-//
-//		GroupMemoryBarrierWithGroupSync();
-//
-//		for (int N_tile_ID = 0; N_tile_ID < SIMULATION_BLOCK_SIZE; N_tile_ID++) {
-//			Particle other = sharedParticles[N_tile_ID];
-//
-//			if (!p.alive || !other.alive || N_block_ID + N_tile_ID == idx)
-//				continue;
-//
-//			float2 dir = p.position - other.position;
-//			float l = length(dir);
-//			float r = (p.radius + other.radius) * _Repulsion;
-//			if (l < r) {
-//				dir += random_point_on_circle(p.position + float2(N_tile_ID, idx)) * step(l, 0.0001);
-//				p.velocity += normalize(dir) * (r - l);
-//			}
-//		}
-//		GroupMemoryBarrierWithGroupSync();
-//	}
-//
-//	float vl = length(p.velocity);
-//	if (vl > 0) {
-//		p.position += normalize(p.velocity) * min(vl, _Limit) * _DT;
-//		p.velocity = normalize(p.velocity) * min(vl * _Drag, _Limit);
-//	}
-//	else {
-//		p.velocity = (float2)0;
-//	}
-//
-//	_Particles[idx] = p;
-//}

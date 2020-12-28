@@ -218,9 +218,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   panSpeed: 3
-  panDelta: 2
+  panDelta: 10
   zoomSpeed: 8
-  zoomDelta: 3.76
+  zoomDelta: 10
 --- !u!1 &1852301166
 GameObject:
   m_ObjectHideFlags: 0
@@ -299,11 +299,11 @@ MonoBehaviour:
   count: 8192
   size: 0.9
   grow: 0.25
-  pattern: 0
+  pattern: 1
   iterations: 2
   divideInterval: 0.25
   maxDivideCount: 64
-  maxLink: 4
+  maxLink: 3
   drag: 0.995
   limit: 1
   repulsion: 2.2
