@@ -45,7 +45,7 @@
 			}
 
 			void frag(v2f i,
-			out half4 GRT0:SV_Target0,
+			out half4 GRT0 :SV_Target0,
 			out half4 GRT1 : SV_Target1,
 			out half4 GRT2 : SV_Target2,
 			out float GRTDepth : SV_Depth
@@ -56,7 +56,7 @@
 				GRT0 = col;
 				GRT1 = i.normal;
 				GRT2 = float4(0,0,1,0);
-				GRTDepth = 0.5;
+				GRTDepth = 50;
 			}
 			ENDCG
 		}

@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 
 namespace MRTCommandBuffer {
     public class MRTCommandBuffer : MonoBehaviour {
-        public Transform targetObj;
+        public Transform target; 
 
         [SerializeField] protected RenderTexture[] rtGBuffers = new RenderTexture[3]; 
         [SerializeField] protected RenderTexture depthBuffer = null;
@@ -11,7 +11,10 @@ namespace MRTCommandBuffer {
         protected Renderer targetRender; 
 
         void Start() {
-            targetRender = targetObj.GetComponent<MeshRenderer>();
+            var cam = GetComponent<Camera>();
+            cam.depthTextureMode |= DepthTextureMode.Depth;
+
+            targetRender = target.GetComponentInChildren<MeshRenderer>();
 
             var cmd = new CommandBuffer();
             cmd.name = "TestGBufferCMD";
@@ -22,13 +25,13 @@ namespace MRTCommandBuffer {
                 rtGBuffers[i] = RenderTexture.GetTemporary(Screen.width, Screen.height, 0);
                 rtGBuffersID[i] = rtGBuffers[i];
             }
-            depthBuffer = RenderTexture.GetTemporary(Screen.width, Screen.height, 0);
+            depthBuffer = RenderTexture.GetTemporary(Screen.width, Screen.height, 24);
 
             cmd.SetRenderTarget(rtGBuffersID, depthBuffer); 
             cmd.ClearRenderTarget(true, true, Color.clear, 1);
-            cmd.DrawRenderer(targetRender, gBufferMaterial); 
+            cmd.DrawRenderer(targetRender, gBufferMaterial);
 
-            Camera.main.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cmd);
+            cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cmd);
         }
     }
 }

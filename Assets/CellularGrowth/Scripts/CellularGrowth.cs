@@ -13,20 +13,20 @@ namespace CellularGrowth {
         [SerializeField] protected Gradient gradient;
         [SerializeField] protected int count = 8192;
 
-        [SerializeField] protected float size = 0.9f;
-        [SerializeField] protected float grow = 0.25f;
+        [SerializeField, Range(0.1f, 1.5f)] protected float size = 0.9f;
+        [SerializeField, Range(0.01f, 1f)] protected float grow = 0.25f;
 
         [SerializeField] DividePattern pattern = DividePattern.Branch;
-        [SerializeField] protected int iterations = 2;
-        [SerializeField] protected float divideInterval = 0.5f;
-        [SerializeField] protected int maxDivideCount = 16;
-        [SerializeField] protected int maxLink = 4;
+        [SerializeField, Range(1, 4)] protected int iterations = 2;
+        [SerializeField, Range(0.02f, 3f)] protected float divideInterval = 0.5f;
+        [SerializeField, Range(1, 128)] protected int maxDivideCount = 16;
+        [SerializeField, Range(2, 6)] protected int maxLink = 4;
 
-        [SerializeField] protected float drag = 0.995f;
-        [SerializeField] protected float limit = 3f;
+        [SerializeField, Range(0.1f, 1f)] protected float drag = 0.995f;
+        [SerializeField, Range(0.1f, 5f)] protected float limit = 3f;
 
-        [SerializeField] protected float repulsion = 1f;
-        [SerializeField] protected float spring = 5f;
+        [SerializeField, Range(1f, 5f)] protected float repulsion = 1f;
+        [SerializeField, Range(1f, 10f)] protected float spring = 5f;
 
         private Mesh particleMesh, edgeMesh;
         private Texture2D pallete;
