@@ -19,9 +19,9 @@
 
     struct v2f
     {
-        float2 uv : TEXCOORD0;
         float4 vertex : SV_POSITION;
-        float4 color : COlOR;
+        float4 color : COLOR;
+        float2 uv : TEXCOORD0;
     };
 
     StructuredBuffer<Particle> _Particles;

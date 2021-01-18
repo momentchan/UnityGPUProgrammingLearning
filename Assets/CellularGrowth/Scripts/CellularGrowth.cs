@@ -210,6 +210,7 @@ namespace CellularGrowth {
             particleMat.SetTexture(palleteProp, pallete);
             Graphics.DrawMeshInstancedIndirect(particleMesh, 0, particleMat, new Bounds(Vector3.zero, Vector3.one * 100f), particleArgsBuffer.Buffer);
 
+            if (edgeMat == null) return;
             // render edges
             edgeMat.SetPass(0);
             edgeMat.SetBuffer(particlesProp, particlePool.ObjectPingPong.Read);
