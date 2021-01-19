@@ -1,0 +1,114 @@
+﻿#pragma kernel Update
+#pragma kernel AddSeed
+#pragma kernel Draw
+
+#define THREAD_NUM 32
+
+struct RDData {
+	float u;
+	float v;
+};
+
+int _Width;
+int _Height;
+int _SeedNum;
+float2 _SeedSize;
+
+float _DU;
+float _DV;
+float _Feed;
+float _Kill;
+
+RWStructuredBuffer<float4>	_SeedBuffer;
+StructuredBuffer<RDData>	_PixelRead;
+RWStructuredBuffer<RDData>	_PixelWrite;
+
+RWTexture2D<float> _HeightMap;
+
+static const int2 laplaceIndex[9] = {
+	int2(-1, -1), int2(0, -1), int2(1, -1),
+	int2(-1,  0), int2(0,  0), int2(1,  0),
+	int2(-1,  1), int2(0,  1), int2(1,  1),
+};
+
+static const float laplacePower[9] = {
+	0.05, 0.20, 0.05,
+	0.20, -1.0, 0.20,
+	0.05, 0.20, 0.05,
+};
+
+int GetIndex(int x, int y) {
+	x = (x < 0) ? x + _Width : x;
+	x = (x >= _Width) ? x - _Width : x;
+
+	y = (y < 0) ? y + _Height : y;
+	y = (y >= _Height) ? y - _Height : y;
+
+	return x + y * _Width;
+}
+
+float2 GetDiffusionUV(int x, int y) {
+	float2 diffuseUV = 0;
+
+	for (int i = 0; i < 9; i++) {
+		int2 pos = laplaceIndex[i];
+		int idx  = GetIndex(x + pos.x, y + pos.y);
+		diffuseUV.x += _PixelRead[idx].u * laplacePower[i];
+		diffuseUV.y += _PixelRead[idx].v * laplacePower[i];
+	}
+	return diffuseUV;
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, 1)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+	int idx = GetIndex(id.x, id.y);
+	float u = _PixelRead[idx].u;
+	float v = _PixelRead[idx].v;
+
+	float uvv = u * v * v;
+	float f = _Feed;
+	float k = _Kill;
+
+	float2 diffuseUV = GetDiffusionUV(id.x, id.y);
+	float dudt = _DU * diffuseUV.x - uvv + f * (1.0 - u);
+	float dvdt = _DV * diffuseUV.y + uvv - (f + k) * v;
+
+	_PixelWrite[idx].u = saturate(u + dudt);
+	_PixelWrite[idx].v = saturate(v + dvdt);
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, 1)]
+void Draw(uint3 id : SV_DispatchThreadID)
+{
+	int idx = GetIndex(id.x, id.y);
+	float u = _PixelRead[idx].u;
+	float v = _PixelRead[idx].v;
+	_HeightMap[id.xy] = 1 - clamp(u - v, 0, 1);
+}
+
+
+[numthreads(THREAD_NUM, 1, 1)]
+void AddSeed(uint3 id : SV_DispatchThreadID) {
+	uint idx = id.x;
+	if (idx >= _SeedNum) return;
+
+	float4 seed = _SeedBuffer[idx];
+	int cx = seed.x;
+	int cy = seed.y;
+	int u  = seed.z;
+	int v  = seed.w;
+
+	int s = _SeedSize.x * v + _SeedSize.y * u;
+	float radius = s * 0.5f;
+
+	for (int x = -s / 2; x < s / 2; x++) {
+		for (int y = -s / 2; y < s / 2; y++) {
+			float dis = sqrt(x * x + y * y);
+			if (dis <= radius) {
+				_PixelWrite[GetIndex(cx + x, cy + y)].u = u;
+				_PixelWrite[GetIndex(cx + x, cy + y)].v = v;
+			}
+		}
+	}
+}

@@ -42,7 +42,7 @@ namespace ScreenSpaceReflection {
         void Start() {
             mat = new Material(shader);
             cam = GetComponent<Camera>();
-            dpt = RenderTextureUtil.CreateRenderTexture(width, height, 24, RenderTextureFormat.Default, FilterMode.Bilinear, true, true, true);
+            dpt = RenderTextureUtil.CreateRenderTexture(width, height, 24, RenderTextureFormat.Default, true, true, true);
             quad = CreateQuad();
         }
 
@@ -51,7 +51,7 @@ namespace ScreenSpaceReflection {
             if (dpt != null) {
                 if (RenderTextureUtil.IsResolutionChanged(dpt, width, height)) {
                     dpt.Release();
-                    dpt = RenderTextureUtil.CreateRenderTexture(width, height, 24, RenderTextureFormat.Default, FilterMode.Bilinear, true, true, true);
+                    dpt = RenderTextureUtil.CreateRenderTexture(width, height, 24, RenderTextureFormat.Default, true, true, true);
                 }
             }
 
@@ -60,10 +60,10 @@ namespace ScreenSpaceReflection {
                 if (rts[i] != null) {
                     if (RenderTextureUtil.IsResolutionChanged(rts[i], width, height)) {
                         rts[i].Release();
-                        rts[i] = RenderTextureUtil.CreateRenderTexture(width, height, 0, RenderTextureFormat.ARGB32, FilterMode.Bilinear, false, false, true);
+                        rts[i] = RenderTextureUtil.CreateRenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
                     }
                 } else {
-                    rts[i] = RenderTextureUtil.CreateRenderTexture(width, height, 0, RenderTextureFormat.ARGB32, FilterMode.Bilinear, false, false, true);
+                    rts[i] = RenderTextureUtil.CreateRenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
                     Graphics.SetRenderTarget(rts[i]);
                     GL.Clear(false, true, Color.clear);
                 }

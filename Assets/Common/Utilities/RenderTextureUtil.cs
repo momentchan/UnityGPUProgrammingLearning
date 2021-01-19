@@ -4,18 +4,29 @@ using UnityEngine;
 
 namespace Common {
     public class RenderTextureUtil {
+        public static RenderTexture CreateRenderTexture(
+            int width,
+            int height,
+            int depth,
+            RenderTextureFormat format,
+            bool enableRandomWrite = true,
+            bool useMipMap = false, 
+            bool autoGenerateMips = false,
+            TextureWrapMode wrapMode = TextureWrapMode.Clamp,
+            FilterMode filterMode = FilterMode.Bilinear
+            ) {
 
-        public static RenderTexture CreateRenderTexture(int width, int height, int depth, RenderTextureFormat format, FilterMode filterMode, bool useMipMap, bool autoGenerateMips, bool enableRandomWrite) {
             var rt = new RenderTexture(width, height, depth, format);
-            rt.filterMode = filterMode;
             rt.useMipMap = useMipMap;
             rt.autoGenerateMips = autoGenerateMips;
             rt.enableRandomWrite = enableRandomWrite;
+            rt.filterMode = filterMode;
+            rt.wrapMode = wrapMode;
             rt.Create();
             return rt;
         }
 
-       public static Texture2D RenderTextureToTexture2D(RenderTexture rt) {
+        public static Texture2D RenderTextureToTexture2D(RenderTexture rt) {
             TextureFormat format;
 
             switch (rt.format) {
