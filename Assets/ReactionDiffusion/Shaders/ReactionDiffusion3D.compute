@@ -1,0 +1,153 @@
+﻿#pragma kernel Clear
+#pragma kernel Update
+#pragma kernel AddSeed
+#pragma kernel Draw
+
+#define THREAD_NUM 10
+
+struct RDData {
+	float u;
+	float v;
+};
+
+int _Width;
+int _Height;
+int _Depth;
+int _SeedNum;
+float2 _SeedSize;
+
+float _DU;
+float _DV;
+float _Feed;
+float _Kill;
+
+RWStructuredBuffer<float4>	_SeedBuffer;
+StructuredBuffer<RDData>	_PixelRead;
+RWStructuredBuffer<RDData>	_PixelWrite;
+
+RWTexture3D<float>  _HeightMap;
+
+static const int3 laplaceIndex[27] = {
+	int3(-1,-1,-1), int3(0,-1,-1), int3(1,-1,-1),
+	int3(-1, 0,-1), int3(0, 0,-1), int3(1, 0,-1),
+	int3(-1, 1,-1), int3(0, 1,-1), int3(1, 1,-1),
+
+	int3(-1,-1, 0), int3(0,-1, 0), int3(1,-1, 0),
+	int3(-1, 0, 0), int3(0, 0, 0), int3(1, 0, 0),
+	int3(-1, 1, 0), int3(0, 1, 0), int3(1, 1, 0),
+
+	int3(-1,-1, 1), int3(0,-1, 1), int3(1,-1, 1),
+	int3(-1, 0, 1), int3(0, 0, 1), int3(1, 0, 1),
+	int3(-1, 1, 1), int3(0, 1, 1), int3(1, 1, 1),
+};
+
+static const float laplacePower[27] = {
+	0.02,	0.02,	0.02,
+	0.02,	0.1,	0.02,
+	0.02,	0.02,	0.02,
+
+	0.02,	0.1,	0.02,
+	0.1,	-1.0,	0.1,
+	0.02,	0.1,	0.02,
+
+	0.02,	0.02,	0.02,
+	0.02,	0.1,	0.02,
+	0.02,	0.02,	0.02
+};
+
+int GetIndex(int x, int y, int z) {
+	x = (x < 0) ? x + _Width : x;
+	x = (x >= _Width) ? x - _Width : x;
+
+	y = (y < 0) ? y + _Height : y;
+	y = (y >= _Height) ? y - _Height : y;
+
+	z = (z < 0) ? z + _Depth : z;
+	z = (z >= _Depth) ? z - _Depth : z;
+
+	return x + y * _Width + z * _Width * _Height;
+}
+
+float2 GetDiffusionUV(int x, int y, int z) {
+	float2 diffuseUV = 0;
+
+	for (int i = 0; i < 27; i++) {
+		int3 pos = laplaceIndex[i];
+		int idx = GetIndex(x + pos.x, y + pos.y, z + pos.z);
+		diffuseUV.x += _PixelRead[idx].u * laplacePower[i];
+		diffuseUV.y += _PixelRead[idx].v * laplacePower[i];
+	}
+	return diffuseUV;
+}
+
+float GetValue(int x, int y, int z) {
+	int idx = GetIndex(x, y, z);
+	float u = _PixelRead[idx].u;
+	float v = _PixelRead[idx].v;
+	return 1 - clamp(u - v, 0, 1);
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, THREAD_NUM)]
+void Clear(uint3 id : SV_DispatchThreadID)
+{
+	int idx = GetIndex(id.x, id.y, id.z);
+	_PixelWrite[idx].u = 1;
+	_PixelWrite[idx].v = 0;
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, THREAD_NUM)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+	int idx = GetIndex(id.x, id.y, id.z);
+	float u = _PixelRead[idx].u;
+	float v = _PixelRead[idx].v;
+
+	float uvv = u * v * v;
+	float f = _Feed;
+	float k = _Kill;
+
+	float2 diffuseUV = GetDiffusionUV(id.x, id.y, id.z);
+	float dudt = _DU * diffuseUV.x - uvv + f * (1.0 - u);
+	float dvdt = _DV * diffuseUV.y + uvv - (f + k) * v;
+
+	_PixelWrite[idx].u = clamp(u + dudt, 0, 1);
+	_PixelWrite[idx].v = clamp(v + dvdt, 0, 1);
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, THREAD_NUM)]
+void Draw(uint3 id : SV_DispatchThreadID)
+{
+	float c = GetValue(id.x, id.y, id.z);
+
+	_HeightMap[id.xyz] = c;
+}
+
+[numthreads(THREAD_NUM, 1, 1)]
+void AddSeed(uint3 id : SV_DispatchThreadID) {
+	uint idx = id.x;
+	if (idx >= _SeedNum) return;
+
+	float4 seed = _SeedBuffer[idx];
+	int cx = seed.x;
+	int cy = seed.y;
+	int cz = seed.z;
+	int v = seed.w;
+
+	int s = _SeedSize.x * v + _SeedSize.y * (1 - v);
+	float radius = s * 0.5f;
+
+	int startX = cx - s / 2;
+	int startY = cy - s / 2;
+	int startZ = cz - s / 2;
+
+	for (int x = 0; x < s; x++) {
+		for (int y = 0; y < s; y++) {
+			for (int z = 0; z < s; z++) {
+				float dis = distance(float3(cx, cy, cz), float3(startX + x, startY + y, startZ + z));
+				if (dis <= radius) {
+					_PixelWrite[GetIndex((cx + x), (cy + y), (cz + z))].v = 1;
+				}
+			}
+		}
+	}
+}

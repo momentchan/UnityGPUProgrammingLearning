@@ -7,12 +7,12 @@ using System.Runtime.InteropServices;
 using UnityEngine.Rendering;
 
 namespace ReactionDiffusion {
-    public class ReactionDiffusion2D : MonoBehaviour, ComputeShaderUser {
+    public class ReactionDiffusion3D : MonoBehaviour, ComputeShaderUser {
 
         [SerializeField] protected ComputeShader cs;
         [SerializeField] protected Material mat;
         [SerializeField] protected RenderTexture heightMap;
-        [SerializeField] protected RenderTexture normalMap;
+        public RenderTexture HeightMap => heightMap;
 
         [Header("Seed")]
         [SerializeField] protected int maxSeedNum = 32;
@@ -31,28 +31,32 @@ namespace ReactionDiffusion {
         [SerializeField] protected Color topColor;
 
         #region Shader Props
-        protected int seedNumProp          = Shader.PropertyToID("_SeedNum");
-        protected int widthProp            = Shader.PropertyToID("_Width");
-        protected int heightProp           = Shader.PropertyToID("_Height");
-        protected int seedSizeProp         = Shader.PropertyToID("_SeedSize");
-        protected int seedBufferProp       = Shader.PropertyToID("_SeedBuffer");
-        protected int duProp               = Shader.PropertyToID("_DU");
-        protected int dvProp               = Shader.PropertyToID("_DV");
-        protected int feedProp             = Shader.PropertyToID("_Feed");
-        protected int killProp             = Shader.PropertyToID("_Kill");
-        protected int pixelBufferReadProp  = Shader.PropertyToID("_PixelRead");
+        protected int seedNumProp = Shader.PropertyToID("_SeedNum");
+        protected int widthProp = Shader.PropertyToID("_Width");
+        protected int heightProp = Shader.PropertyToID("_Height");
+        protected int depthProp = Shader.PropertyToID("_Depth");
+        protected int seedSizeProp = Shader.PropertyToID("_SeedSize");
+        protected int seedBufferProp = Shader.PropertyToID("_SeedBuffer");
+        protected int duProp = Shader.PropertyToID("_DU");
+        protected int dvProp = Shader.PropertyToID("_DV");
+        protected int feedProp = Shader.PropertyToID("_Feed");
+        protected int killProp = Shader.PropertyToID("_Kill");
+        protected int pixelBufferReadProp = Shader.PropertyToID("_PixelRead");
         protected int pixelBufferWriteProp = Shader.PropertyToID("_PixelWrite");
-        protected int heightMapProp        = Shader.PropertyToID("_HeightMap");
-        protected int normalMapProp        = Shader.PropertyToID("_NormalMap");
-        protected int texProp              = Shader.PropertyToID("_MainTex");
-        protected int bottomColProp        = Shader.PropertyToID("_Color0");
-        protected int topColProp           = Shader.PropertyToID("_Color1");
+        protected int heightMapProp = Shader.PropertyToID("_HeightMap");
+        protected int normalMapProp = Shader.PropertyToID("_NormalMap");
+        protected int texProp = Shader.PropertyToID("_MainTex");
+        protected int bottomColProp = Shader.PropertyToID("_Color0");
+        protected int topColProp = Shader.PropertyToID("_Color1");
         #endregion
 
-        protected int width, height;
-        private int pixels;
+        [SerializeField] protected int width = 128;
+        [SerializeField] protected int height = 128;
+        [SerializeField] protected int depth = 128;
 
-        private Queue<Vector3> seeds;       // x, y, v
+        private int texels;
+
+        private Queue<Vector4> seeds;       // x, y, z, v
         protected ComputeBuffer seedBuffer;
         protected PingPongBuffer pixelBuffer;
 
@@ -60,14 +64,14 @@ namespace ReactionDiffusion {
         protected GPUThreads threads;
 
         protected enum ComputeKernel {
-            Update, Draw, AddSeed
+            Clear, Update, Draw, AddSeed
         }
 
         public void InitBuffers() {
-            pixelBuffer = new PingPongBuffer(pixels, typeof(RDData));
-            seedBuffer = new ComputeBuffer(maxSeedNum, Marshal.SizeOf(typeof(Vector3)));
+            pixelBuffer = new PingPongBuffer(texels, typeof(RDData));
+            seedBuffer = new ComputeBuffer(maxSeedNum, Marshal.SizeOf(typeof(Vector4)));
 
-            var initData = Enumerable.Repeat(new RDData() { u = 0, v = 1 }, pixels).ToArray();
+            var initData = Enumerable.Repeat(new RDData() { u = 0, v = 1 }, texels).ToArray();
             pixelBuffer.Read.SetData(initData);
             pixelBuffer.Write.SetData(initData);
         }
@@ -79,50 +83,41 @@ namespace ReactionDiffusion {
                     t => cs.FindKernel(t.ToString())
                 );
             threads = ComputeShaderUtil.GetThreadGroupSize(cs, kernelMap[ComputeKernel.Update]);
-            ComputeShaderUtil.InitialCheck(pixels, threads);
+            ComputeShaderUtil.InitialCheck(texels, threads);
         }
 
-        protected virtual void Initialize() {
-            width = Screen.width;
-            height = Screen.height;
-            pixels = width * height;
-            seeds = new Queue<Vector3>();
-            heightMap = RenderTextureUtil.CreateRenderTexture(width, height, 0, RenderTextureFormat.RFloat, true, false, false, TextureWrapMode.Repeat);
+        protected void Initialize() {
+            texels = width * height * depth;
+            seeds = new Queue<Vector4>();
+            heightMap = CreateRenderTexture3D(width, height, depth);
 
             InitBuffers();
             InitKernels();
         }
 
-        protected virtual void Start() {
+        protected void Start() {
             Initialize();
+        }
+        
+        private RenderTexture CreateRenderTexture3D(int width, int height, int depth) {
+            var tex = new RenderTexture(width, height, 0, RenderTextureFormat.RFloat, RenderTextureReadWrite.Linear);
+            tex.volumeDepth = depth;
+            tex.enableRandomWrite = true;
+            tex.dimension = TextureDimension.Tex3D;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.Create();
 
-            //Create a Quad:
-            var meshFilter = gameObject.AddComponent<MeshFilter>();
-            meshFilter.mesh = MeshUtil.CreateQuad();
-            var meshRenderer = gameObject.AddComponent<MeshRenderer>();
-            meshRenderer.material = mat;
-            transform.position = Vector3.forward;
-            var height = Camera.main.orthographicSize * 2;
-            var width = height * Camera.main.aspect;
-
-            transform.localScale = new Vector3(width, height, 1);
-
-            //// Post Effect
-            //// Couldn't be applied to surface shader
-            //var cam = Camera.main;
-            //if (cam == null) return;
-            //var buf = new CommandBuffer();
-            //buf.name = "PostEffect";
-            //buf.Blit(heightMap, BuiltinRenderTextureType.CurrentActive, mat);
-            //cam.AddCommandBuffer(CameraEvent.AfterEverything, buf);
+            return tex;
         }
 
         void Update() {
             if (Input.GetMouseButton(0)) {
-                AddSeed((int)Input.mousePosition.x, (int)Input.mousePosition.y, 1);
+                AddSeed(width / 2, height / 2, depth / 2, 1);
             }
-            if (Input.GetMouseButton(1)) {
-                AddSeed((int)Input.mousePosition.x, (int)Input.mousePosition.y, 0);
+
+            if (Input.GetKey(KeyCode.R)) {
+                ResetKernel();
             }
 
             AddSeedKernel();
@@ -132,15 +127,23 @@ namespace ReactionDiffusion {
             UpdateMaterial();
         }
 
-        private void AddSeed(int x, int y, float v) {
+        private void ResetKernel() {
+            cs.SetBuffer(kernelMap[ComputeKernel.Clear], pixelBufferWriteProp, pixelBuffer.Read);
+            cs.Dispatch(kernelMap[ComputeKernel.Clear], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), Mathf.CeilToInt(1f * depth / threads.z));
+
+            cs.SetBuffer(kernelMap[ComputeKernel.Clear], pixelBufferWriteProp, pixelBuffer.Write);
+            cs.Dispatch(kernelMap[ComputeKernel.Clear], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), Mathf.CeilToInt(1f * depth / threads.z));
+        }
+
+        private void AddSeed(int x, int y, int z, float v) {
             if (seeds.Count < maxSeedNum) {
-                seeds.Enqueue(new Vector3(x, y, v));
+                seeds.Enqueue(new Vector4(x, y, z, v));
             }
         }
 
         private void AddRandomSeeds(int num, float v) {
             for (var i = 0; i < num; i++) {
-                AddSeed(UnityEngine.Random.Range(0, width), UnityEngine.Random.Range(0, height), v);
+                AddSeed(UnityEngine.Random.Range(0, width), UnityEngine.Random.Range(0, height), UnityEngine.Random.Range(0, depth), v);
             }
         }
 
@@ -151,6 +154,7 @@ namespace ReactionDiffusion {
                 cs.SetInt(seedNumProp, count);
                 cs.SetInt(widthProp, width);
                 cs.SetInt(heightProp, height);
+                cs.SetInt(depthProp, depth);
                 cs.SetVector(seedSizeProp, seedSize);
                 cs.SetBuffer(kernelMap[ComputeKernel.AddSeed], seedBufferProp, seedBuffer);
                 cs.SetBuffer(kernelMap[ComputeKernel.AddSeed], pixelBufferWriteProp, pixelBuffer.Read);
@@ -168,24 +172,23 @@ namespace ReactionDiffusion {
 
                 cs.SetBuffer(kernelMap[ComputeKernel.Update], pixelBufferReadProp, pixelBuffer.Read);
                 cs.SetBuffer(kernelMap[ComputeKernel.Update], pixelBufferWriteProp, pixelBuffer.Write);
-                cs.Dispatch(kernelMap[ComputeKernel.Update], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), 1);
+                cs.Dispatch(kernelMap[ComputeKernel.Update], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), Mathf.CeilToInt(1f * depth / threads.z));
 
                 pixelBuffer.Swap();
             }
         }
 
-        protected virtual void DrawKernel() {
+        protected void DrawKernel() {
             cs.SetInt(widthProp, width);
             cs.SetInt(heightProp, height);
+            cs.SetInt(depthProp, depth);
             cs.SetBuffer(kernelMap[ComputeKernel.Draw], pixelBufferReadProp, pixelBuffer.Read);
             cs.SetTexture(kernelMap[ComputeKernel.Draw], heightMapProp, heightMap);
-            cs.Dispatch(kernelMap[ComputeKernel.Draw], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), 1);
+            cs.Dispatch(kernelMap[ComputeKernel.Draw], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), Mathf.CeilToInt(1f * depth / threads.z));
         }
 
-        protected virtual void UpdateMaterial() {
+        protected void UpdateMaterial() {
             mat.SetTexture(texProp, heightMap);
-            mat.SetColor(bottomColProp, bottomColor);
-            mat.SetColor(topColProp, topColor);
         }
 
         protected virtual void OnDestroy() {
