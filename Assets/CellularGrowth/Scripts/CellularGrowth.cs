@@ -6,7 +6,7 @@ using System.Linq;
 using UnityEngine;
 
 namespace CellularGrowth {
-    public class CellularGrowth : MonoBehaviour, IComputeShader {
+    public class CellularGrowth : MonoBehaviour, ComputeShaderUser {
 
         [SerializeField] protected ComputeShader compute;
         [SerializeField] protected Material particleMat, edgeMat;

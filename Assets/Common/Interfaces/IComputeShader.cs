@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 namespace Common {
-    interface IComputeShader  {
+    interface ComputeShaderUser  {
         void InitBuffers();
         void InitKernels();
     }
