@@ -23,7 +23,8 @@ RWStructuredBuffer<float3>	_SeedBuffer;
 StructuredBuffer<RDData>	_PixelRead;
 RWStructuredBuffer<RDData>	_PixelWrite;
 
-RWTexture2D<float> _HeightMap;
+RWTexture2D<float>  _HeightMap;
+RWTexture2D<float4> _NormalMap;
 
 static const int2 laplaceIndex[9] = {
 	int2(-1, -1), int2(0, -1), int2(1, -1),
@@ -47,6 +48,18 @@ int GetIndex(int x, int y) {
 	return x + y * _Width;
 }
 
+float2 GetDiffusionUV(int x, int y) {
+	float2 diffuseUV = 0;
+
+	for (int i = 0; i < 9; i++) {
+		int2 pos = laplaceIndex[i];
+		int idx = GetIndex(x + pos.x, y + pos.y);
+		diffuseUV.x += _PixelRead[idx].u * laplacePower[i];
+		diffuseUV.y += _PixelRead[idx].v * laplacePower[i];
+	}
+	return diffuseUV;
+}
+
 float GetValue(int x, int y) {
 	int idx = GetIndex(x, y);
 	float u = _PixelRead[idx].u;
@@ -54,16 +67,14 @@ float GetValue(int x, int y) {
 	return 1 - clamp(u - v, 0, 1);
 }
 
-float2 GetDiffusionUV(int x, int y) {
-	float2 diffuseUV = 0;
-
-	for (int i = 0; i < 9; i++) {
-		int2 pos = laplaceIndex[i];
-		int idx  = GetIndex(x + pos.x, y + pos.y);
-		diffuseUV.x += _PixelRead[idx].u * laplacePower[i];
-		diffuseUV.y += _PixelRead[idx].v * laplacePower[i];
-	}
-	return diffuseUV;
+float3 GetNormal(int x, int y) {
+	float3 normal = 0;
+	float c = GetValue(x, y);
+	normal.x = ((GetValue(x - 1, y) - c) + (c - GetValue(x + 1, y)));
+	normal.y = ((GetValue(x, y - 1) - c) + (c - GetValue(x, y + 1)));
+	normal.z = 1;
+	normal = normalize(normal) * 0.5f + 0.5f;
+	return normal;
 }
 
 [numthreads(THREAD_NUM, THREAD_NUM, 1)]
@@ -89,7 +100,9 @@ void Update(uint3 id : SV_DispatchThreadID)
 void Draw(uint3 id : SV_DispatchThreadID)
 {
 	float c = GetValue(id.x, id.y);
+
 	_HeightMap[id.xy] = c;
+	_NormalMap[id.xy] = float4(GetNormal(id.x, id.y), 1);
 }
 
 [numthreads(THREAD_NUM, 1, 1)]
@@ -100,7 +113,7 @@ void AddSeed(uint3 id : SV_DispatchThreadID) {
 	float3 seed = _SeedBuffer[idx];
 	int cx = seed.x;
 	int cy = seed.y;
-	int v  = seed.z;
+	int v = seed.z;
 
 	int s = _SeedSize.x * v + _SeedSize.y * (1 - v);
 	float radius = s * 0.5f;

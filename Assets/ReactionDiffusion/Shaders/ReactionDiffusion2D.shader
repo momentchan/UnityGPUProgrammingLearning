@@ -1,4 +1,4 @@
-﻿Shader "ReactionDiffusion/Unlit2D"
+﻿Shader "ReactionDiffusion2D/Unlit"
 {
     Properties
     {
