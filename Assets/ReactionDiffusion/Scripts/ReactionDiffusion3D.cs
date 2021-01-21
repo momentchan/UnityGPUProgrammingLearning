@@ -116,6 +116,10 @@ namespace ReactionDiffusion {
                 AddSeed(width / 2, height / 2, depth / 2, 1);
             }
 
+            if (Input.GetKey(KeyCode.A)) {
+                AddRandomSeeds(seedNum, 1);
+            }
+
             if (Input.GetKey(KeyCode.R)) {
                 ResetKernel();
             }

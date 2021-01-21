@@ -1,6 +1,7 @@
 ﻿#pragma kernel Update
 #pragma kernel AddSeed
 #pragma kernel Draw
+#pragma kernel Clear
 
 #define THREAD_NUM 32
 
@@ -113,4 +114,11 @@ void AddSeed(uint3 id : SV_DispatchThreadID) {
 			}
 		}
 	}
+}
+
+[numthreads(THREAD_NUM, THREAD_NUM, 1)]
+void Clear(uint3 id : SV_DispatchThreadID) {
+	int idx = GetIndex(id.x, id.y);
+	_PixelWrite[idx].u = 1;
+	_PixelWrite[idx].v = 0;
 }

@@ -60,7 +60,7 @@ namespace ReactionDiffusion {
         protected GPUThreads threads;
 
         protected enum ComputeKernel {
-            Update, Draw, AddSeed
+            Update, Draw, AddSeed, Clear
         }
 
         public void InitBuffers() {
@@ -125,11 +125,21 @@ namespace ReactionDiffusion {
                 AddSeed((int)Input.mousePosition.x, (int)Input.mousePosition.y, 0);
             }
 
+            if (Input.GetKeyDown(KeyCode.R))
+                ClearKernel();
+
             AddSeedKernel();
             UpdateKernel();
             DrawKernel();
-
             UpdateMaterial();
+        }
+
+        private void ClearKernel() {
+            cs.SetBuffer(kernelMap[ComputeKernel.Clear], pixelBufferWriteProp, pixelBuffer.Read);
+            cs.Dispatch(kernelMap[ComputeKernel.Clear], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), 1);
+
+            cs.SetBuffer(kernelMap[ComputeKernel.Clear], pixelBufferWriteProp, pixelBuffer.Write);
+            cs.Dispatch(kernelMap[ComputeKernel.Clear], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), 1);
         }
 
         private void AddSeed(int x, int y, float v) {
