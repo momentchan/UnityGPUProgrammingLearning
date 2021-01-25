@@ -12,6 +12,8 @@
         Tags { "RenderType" = "Opaque" }
         LOD 200
 
+        Cull Off
+
         CGPROGRAM
         #pragma surface surf Standard vertex:vert addshadow
         #pragma instancing_options procedural:setup
