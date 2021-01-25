@@ -8,6 +8,8 @@ using Common;
 
 namespace StableFluid {
 
+    using Common;
+
     // Note:
     // 1. Update velocity
     //    - Add external force to velocity
@@ -101,6 +103,8 @@ namespace StableFluid {
 
         public RenderTexture SourceTex { get { return sourceTex; } set { sourceTex = value; } }
 
+        public TextureEvent textureBinding;
+
         protected virtual void Start() {
             Initialize();
         }
@@ -121,6 +125,8 @@ namespace StableFluid {
             computeShader.SetTextureFromGlobal(kernelMap[ComputeKernels.Draw], solverId, solverTexId);
             computeShader.Dispatch(kernelMap[ComputeKernels.Draw], Mathf.CeilToInt(solverTex.width / gpuThreads.x), Mathf.CeilToInt(solverTex.height / gpuThreads.y), 1);
             Shader.SetGlobalTexture(solverTexId, solverTex);
+
+            textureBinding.Invoke(solverTex);
         }
 
         private void OnDestroy() {

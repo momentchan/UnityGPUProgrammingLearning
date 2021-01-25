@@ -11,6 +11,7 @@ namespace ReactionDiffusion {
 
         [SerializeField] protected ComputeShader cs;
         [SerializeField] protected Material mat;
+        [SerializeField] protected bool renderToTexture;
         [SerializeField] protected RenderTexture heightMap;
         [SerializeField] protected RenderTexture normalMap;
 
@@ -59,6 +60,8 @@ namespace ReactionDiffusion {
         protected Dictionary<ComputeKernel, int> kernelMap = new Dictionary<ComputeKernel, int>();
         protected GPUThreads threads;
 
+        public TextureEvent textureBinding;
+
         protected enum ComputeKernel {
             Update, Draw, AddSeed, Clear
         }
@@ -97,15 +100,17 @@ namespace ReactionDiffusion {
             Initialize();
 
             //Create a Quad:
-            var meshFilter = gameObject.AddComponent<MeshFilter>();
-            meshFilter.mesh = MeshUtil.CreateQuad();
-            var meshRenderer = gameObject.AddComponent<MeshRenderer>();
-            meshRenderer.material = mat;
-            transform.position = Vector3.forward;
-            var height = Camera.main.orthographicSize * 2;
-            var width = height * Camera.main.aspect;
+            if (!renderToTexture) {
+                var meshFilter = gameObject.AddComponent<MeshFilter>();
+                meshFilter.mesh = MeshUtil.CreateQuad();
+                var meshRenderer = gameObject.AddComponent<MeshRenderer>();
+                meshRenderer.material = mat;
+                transform.position = Vector3.forward;
+                var height = Camera.main.orthographicSize * 2;
+                var width = height * Camera.main.aspect;
 
-            transform.localScale = new Vector3(width, height, 1);
+                transform.localScale = new Vector3(width, height, 1);
+            }
 
             //// Post Effect
             //// Couldn't be applied to surface shader
@@ -190,6 +195,7 @@ namespace ReactionDiffusion {
             cs.SetBuffer(kernelMap[ComputeKernel.Draw], pixelBufferReadProp, pixelBuffer.Read);
             cs.SetTexture(kernelMap[ComputeKernel.Draw], heightMapProp, heightMap);
             cs.Dispatch(kernelMap[ComputeKernel.Draw], Mathf.CeilToInt(1f * width / threads.x), Mathf.CeilToInt(1f * height / threads.y), 1);
+            textureBinding.Invoke(heightMap);
         }
 
         protected virtual void UpdateMaterial() {
