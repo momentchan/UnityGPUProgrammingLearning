@@ -1,0 +1,143 @@
+﻿#pragma kernel Reset
+#pragma kernel Simulation
+
+#define NUM_THREADS 32
+
+Texture2D<float4> _PositionBufferRead;
+Texture2D<float4> _PositionPrevBufferRead;
+
+RWTexture2D<float4> _PositionBufferWrite;
+RWTexture2D<float4> _PositionPrevBufferWrite;
+RWTexture2D<float4> _NormalBufferWrite;
+
+int2 _ClothResolution;
+float2 _TotalClothLength;
+float _ResolutionLength;
+float4 _Gravity;
+float _Stiffness;
+float _Damp;
+float _InverseMass;
+float _DeltaTime;
+bool _DetectCollision;
+float4 _CollisionParams;
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void Reset(uint3 DTid : SV_DispatchThreadID)
+{
+	uint2 idx = DTid.xy;
+
+	float3 pos = float3(idx.x * _ResolutionLength, idx.y * _ResolutionLength, 0);
+	pos.xy -= _TotalClothLength.xy * 0.5f;
+
+	float3 normal = float3(0, 0, -1);
+
+	_PositionBufferWrite[idx] = float4(pos.xyz, 1.0);
+	_PositionPrevBufferWrite[idx] = float4(pos.xyz, 1.0);
+	_NormalBufferWrite[idx] = float4(normal.xyz, 1.0);
+}
+
+
+static const int2 neighbors[12] = {
+	int2(-1, -1),
+	int2(-1, 0),
+	int2(-1, 1),
+	int2(0, 1),
+	int2(1, 1),
+	int2(1, 0),
+	int2(1, -1),
+	int2(0, -1),
+	int2(-2, -2),
+	int2(-2, 2),
+	int2(2, -2),
+	int2(2, 2)
+};
+
+int2 GetNeighborOffset(int i) {
+	return neighbors[i];
+}
+
+
+bool IsOutOfBound(int2 idx, int2 bound) {
+	int x = idx.x;
+	int y = idx.y;
+	int w = bound.x;
+	int h = bound.y;
+
+	return x < 0 || x > w - 1 || y < 0 || y > h - 1;
+}
+
+void ComputeNormal() {
+
+}
+
+float ComputeSpringForce() {
+
+}
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void Simulation(uint3 DTid : SV_DispatchThreadID)
+{
+	uint2 idx = DTid.xy;
+	int2 res = _ClothResolution;
+
+	float3 pos = _PositionBufferRead[idx];
+	float3 posPrev = _PositionPrevBufferRead[idx];
+	float3 vel = (pos - posPrev) / _DeltaTime;
+
+	// Parameters for computing normal
+	float3 normal = (float3)0;
+	float3 lastDiff = (float3)0;
+	float3 force = _Gravity.xyz;
+
+	// fix upper line
+	if (idx.y == _ClothResolution.y - 1)
+		return;
+
+	[unroll]
+	for (int k = 0; k < 12; k++) {
+		int2 offset = GetNeighborOffset(k);
+
+		if (IsOutOfBound(idx + offset, res))
+			continue;
+
+		int2 neighborId = idx + offset;
+		float3 posNeighbor = _PositionBufferRead[neighborId];
+		float3 posDiff = posNeighbor - pos;
+
+		float3 currDiff = normalize(posDiff);
+		if (k > 0 && k < 8) {
+			bool IsSameDir = dot(currDiff, lastDiff) > 0;
+			if (IsSameDir > 0) {
+				normal += cross(lastDiff, currDiff);
+			}
+		}
+		lastDiff = currDiff;
+
+		float restLength = length(offset * _ResolutionLength);
+		float3 KI = currDiff * (length(posDiff) - restLength) * _Stiffness;
+		float3 bv = vel * _Damp;
+		force += KI - bv;
+	}
+
+	normal = normalize(normal / 7);
+
+	float3 acc = (float3)0.0;
+	acc = force * _InverseMass;
+
+	float3 tmp = pos;
+	pos = pos * 2.0 - posPrev + acc * (_DeltaTime * _DeltaTime);
+	posPrev = tmp;
+
+	if (_DetectCollision) {
+		float3 center = _CollisionParams.xyz;
+		float radius = _CollisionParams.w;
+
+		if (length(pos - center) < radius) {
+			pos = center + normalize(pos - center) * radius;
+		}
+	}
+
+	_PositionBufferWrite[idx] = float4(pos.xyz, 1);
+	_PositionPrevBufferWrite[idx] = float4(posPrev.xyz, 1);
+	_NormalBufferWrite[idx] = float4(normal.xyz, 1);
+}
