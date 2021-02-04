@@ -33,7 +33,7 @@ namespace CellularGrowth {
         private GPUObjectPingPongPool particlePool;
         private GPUObjectPool         edgePool;
         private GPUPool               dividablePool;
-        private GPUArgsBuffer         particleArgsBuffer, edgeArgsBuffer;
+        private GPUDrawArgsBuffer     particleArgsBuffer, edgeArgsBuffer;
 
         private enum DividePattern {
             Closed, Branch
@@ -106,13 +106,13 @@ namespace CellularGrowth {
         public void InitBuffers() {
             particlePool  = new GPUObjectPingPongPool(count, typeof(Particle));
             edgePool      = new GPUObjectPool(count, typeof(Edge));
-            dividablePool = new GPUPool(count, typeof(uint));
+            dividablePool = new GPUPool(count, typeof(int));
 
             particleMesh = MeshUtil.CreateQuad();
-            particleArgsBuffer = new GPUArgsBuffer(particleMesh.GetIndexCount(0), (uint)count);
+            particleArgsBuffer = new GPUDrawArgsBuffer(particleMesh.GetIndexCount(0), (uint)count);
 
             edgeMesh = MeshUtil.CreateLine();
-            edgeArgsBuffer = new GPUArgsBuffer(edgeMesh.GetIndexCount(0), (uint)count);
+            edgeArgsBuffer = new GPUDrawArgsBuffer(edgeMesh.GetIndexCount(0), (uint)count);
         }
 
         public void InitKernels() {

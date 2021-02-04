@@ -28,7 +28,7 @@ namespace CellularGrowth {
         private Texture2D pallete;
         private GPUObjectPingPongPool particlePool;
         private GPUPool dividablePool;
-        private GPUArgsBuffer argsBuffer;
+        private GPUDrawArgsBuffer argsBuffer;
 
         private enum ComputeKernel {
             InitParticles, 
@@ -82,10 +82,10 @@ namespace CellularGrowth {
         public void InitBuffers() {
             particlePool = new GPUObjectPingPongPool(count, typeof(Particle));
 
-            dividablePool = new GPUPool(count, typeof(uint));
+            dividablePool = new GPUPool(count, typeof(int));
 
             mesh = MeshUtil.CreateQuad();
-            argsBuffer = new GPUArgsBuffer(mesh.GetIndexCount(0), (uint)count);
+            argsBuffer = new GPUDrawArgsBuffer(mesh.GetIndexCount(0), (uint)count);
         }
 
         public void InitKernels() {

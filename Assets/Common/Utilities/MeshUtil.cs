@@ -26,7 +26,8 @@ namespace Common {
 
         public static Mesh CreateLine() {
             var mesh = new Mesh();
-            mesh.vertices = new Vector3[] { new Vector3(0f, 0f, 0f), new Vector3(0f, 1f, 0f) };
+            mesh.hideFlags = HideFlags.DontSave;
+            mesh.vertices = new Vector3[] { Vector3.zero, Vector3.up };
             mesh.uv = new Vector2[] { new Vector2(0f, 0f), new Vector2(0f, 1f) };
             mesh.SetIndices(new int[] { 0, 1 }, MeshTopology.Lines, 0);
             return mesh;

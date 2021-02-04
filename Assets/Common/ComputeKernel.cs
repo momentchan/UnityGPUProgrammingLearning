@@ -5,7 +5,7 @@ using System.Linq;
 using UnityEngine;
 
 namespace Common {
-    public class ComputeKernel<T> {
+    public class ComputeKernel<T> where T : Enum {
 
         public GPUThreads Threads => threads;
 
