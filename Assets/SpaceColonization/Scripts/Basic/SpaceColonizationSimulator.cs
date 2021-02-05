@@ -32,16 +32,18 @@ namespace SpaceColonization {
 
         public static readonly int DT = Shader.PropertyToID("_DT");
         public static readonly int Local2World = Shader.PropertyToID("_Local2World");
+
+        // Skinned
+        public static readonly int Bones = Shader.PropertyToID("_Bones");
+        public static readonly int Vertices = Shader.PropertyToID("_Vertices");
+        public static readonly int BindPoses = Shader.PropertyToID("_BindPoses");
+        public static readonly int BoneMatrices = Shader.PropertyToID("_BoneMatrices");
     }
 
-    public class SpaceColonizationSimulator : MonoBehaviour {
+    public class SpaceColonizationSimulator : SpaceColonizationSimulatorBase {
 
-        public int BufferSize { get; private set; }
-        public int NodesCount { get; private set; }
-        public int EdgesCount { get; private set; }
-        public bool IsReady { get; private set; }
-        public ComputeBuffer NodeBuffer => nodeObjectPoolBuffer.ObjectBuffer;
-        public ComputeBuffer EdgeBuffer => edgePoolBuffer;
+        public override ComputeBuffer GetNodeBuffer() => nodeObjectPoolBuffer.ObjectBuffer;
+        public override ComputeBuffer GetEdgeBuffer() => edgePoolBuffer;
 
         [SerializeField] private ComputeShader cs;
 

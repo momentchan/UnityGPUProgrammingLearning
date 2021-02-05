@@ -2,25 +2,29 @@
 {
     Properties
     {
+        _Thickness("Thickness", Range(0.01, 0.1)) = 0.1
         _Color("Color", Color) = (1, 1, 1, 1)
-    _Thickness("Thickness", Range(0.01, 0.1)) = 0.1
 
+        
     }
 
-        SubShader
+    SubShader
     {
-        Tags { "RenderType" = "Opaque" "Queue" = "Transparent" }
+        Tags { "RenderType" = "Opaque" }
         LOD 100
 
         Pass
         {
+            Tags {"LightMode" = "Deferred"}
+
             CGPROGRAM
+            #pragma target 4.0
             #pragma vertex vert
             #pragma geometry geom
             #pragma fragment frag
 
-            #include "Edge.cginc"
-            #include "Node.cginc"
+            #include "Includes/Edge.cginc"
+            #include "Includes/Node.cginc"
             #include "UnityCG.cginc"
 
             struct appdata

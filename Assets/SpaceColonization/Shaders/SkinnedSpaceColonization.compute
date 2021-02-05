@@ -1,31 +1,40 @@
-﻿#pragma kernel Setup
+﻿#pragma kernel SetupSkin
+#pragma kernel SetupAttractions
+#pragma kernel SetupNodes
 #pragma kernel Seed
 #pragma kernel Search
 #pragma kernel Attract
 #pragma kernel Connect
 #pragma kernel Remove
 #pragma kernel Grow
+#pragma kernel Animate
 #define THREAD [numthreads(128, 1, 1)]
 
 #include "../../Common/Libs/Random.cginc"
-#include "Includes/Node.cginc"
-#include "Includes/Attraction.cginc"
-#include "Includes/Candidate.cginc"
+#include "Includes/SkinnedNode.cginc"
+#include "Includes/SkinnedAttraction.cginc"
+#include "Includes/SkinnedCandidate.cginc"
 #include "Includes/Edge.cginc"
 
-RWStructuredBuffer<Node> _Nodes;
+RWStructuredBuffer<SkinnedNode> _Nodes;
 
 AppendStructuredBuffer<uint> _NodesPoolAppend;
 ConsumeStructuredBuffer<uint> _NodesPoolConsume;
 
-AppendStructuredBuffer<Candidate> _CandidatesAppend;
-ConsumeStructuredBuffer<Candidate> _CandidatesConsume;
+AppendStructuredBuffer<SkinnedCandidate> _CandidatesAppend;
+ConsumeStructuredBuffer<SkinnedCandidate> _CandidatesConsume;
 
 AppendStructuredBuffer<Edge> _EdgesAppend;
 ConsumeStructuredBuffer<Edge> _EdgesConsume;
 
-RWStructuredBuffer<Attraction> _Attractions;
+StructuredBuffer<float3> _Vertices;
+StructuredBuffer<int> _Bones;
+
+RWStructuredBuffer<SkinnedAttraction> _Attractions;
 StructuredBuffer<float3> _Seeds;
+
+StructuredBuffer<float4x4> _BindPoses;
+StructuredBuffer<float4x4> _BoneMatrices;
 
 float _MassMin;
 float _MassMax;
@@ -35,9 +44,10 @@ float _KillDistance;
 float _DT;
 int _ConnectCount;
 
-uint CreateNodeAndGetIdFromPool(out Node node) {
+uint CreateNodeAndGetIdFromPool(out SkinnedNode node) {
 	uint i = _NodesPoolConsume.Consume();
-	node.position = float3(0, 0, 0);
+	node.position = node.animated = float3(0, 0, 0);
+	node.index0 = -1;
 	node.t = 0;
 	node.offset = 0;
 	node.from = -1;
@@ -54,7 +64,48 @@ void CreateEdge(int a, int b) {
 }
 
 THREAD
-void Setup(uint3 id : SV_DispatchThreadID)
+void SetupSkin(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+	uint count, stride;
+	_Attractions.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	SkinnedAttraction attr = _Attractions[idx];
+
+	_Vertices.GetDimensions(count, stride);
+	float3 p = attr.position;
+	float min_dist = 1e08;
+	for (int i = 0; i < count; i++) {
+		float3 v = _Vertices[i];
+		float d = distance(p, v);
+		if (d < min_dist) {
+			min_dist = d;
+			attr.bone = _Bones[i];
+		}
+	}
+	_Attractions[idx] = attr;
+}
+
+THREAD
+void SetupAttractions(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+	uint count, stride;
+	_Attractions.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	SkinnedAttraction attr = _Attractions[idx];
+	attr.active = true;
+	attr.found = false;
+	attr.nearestIndex = -1;
+	_Attractions[idx] = attr;
+}
+
+THREAD
+void SetupNodes(uint3 id : SV_DispatchThreadID)
 {
 	uint idx = id.x;
 	uint count, stride;
@@ -64,7 +115,8 @@ void Setup(uint3 id : SV_DispatchThreadID)
 
 	_NodesPoolAppend.Append(idx);
 
-	Node n = _Nodes[idx];
+	SkinnedNode n = _Nodes[idx];
+	n.index0 = -1;
 	n.active = false;
 	_Nodes[idx] = n;
 }
@@ -78,13 +130,28 @@ void Seed(uint3 id : SV_DispatchThreadID)
 	if (idx >= count)
 		return;
 
-	Node n;
+	SkinnedNode n;
 	uint i = CreateNodeAndGetIdFromPool(n);
-	n.position = _Seeds[idx];
+	n.position = n.animated =  _Seeds[idx];
 	n.t = 1;
 	n.offset = 0;
 	n.from = -1;
 	n.mass = lerp(_MassMin, _MassMax, nrand(float2(1.0 * idx / count, 0)));
+
+	_Attractions.GetDimensions(count, stride);
+	float3 p = n.position;
+	float min_dist = 1e08;
+	for (int j = 0; j < count; j++) {
+		SkinnedAttraction attr = _Attractions[j];
+
+		float3 v = attr.position;
+		float d = distance(p, v);
+		if (d < min_dist) {
+			min_dist = d;
+			n.index0 = attr.bone;
+		}
+	}
+
 	_Nodes[i] = n;
 }
 
@@ -97,7 +164,7 @@ void Search(uint3 id : SV_DispatchThreadID)
 	if (idx >= count)
 		return;
 
-	Attraction attr = _Attractions[idx];
+	SkinnedAttraction attr = _Attractions[idx];
 	attr.found = false;
 	if (attr.active) {
 		_Nodes.GetDimensions(count, stride);
@@ -106,7 +173,7 @@ void Search(uint3 id : SV_DispatchThreadID)
 		uint nearest = -1;
 
 		for (uint i = 0; i < count; i++) {
-			Node n = _Nodes[i];
+			SkinnedNode n = _Nodes[i];
 
 			if (n.active) {
 				float3 dir = attr.position - n.position;
@@ -132,28 +199,38 @@ void Attract(uint3 id : SV_DispatchThreadID)
 	if (idx >= count)
 		return;
 
-	Node n = _Nodes[idx];
+	SkinnedNode n = _Nodes[idx];
 	if (n.active && n.t >= 1.0) {
 
 		float3 dir = 0;
 		uint counter = 0;
+		float min_dist = 1e08;
 
 		_Attractions.GetDimensions(count, stride);
 		for (uint i = 0; i < count; i++) {
-			Attraction attr = _Attractions[i];
+			SkinnedAttraction attr = _Attractions[i];
 
 			if (attr.active && attr.found && attr.nearestIndex == idx) {
-				dir += normalize(attr.position - n.position);
+
+				float3 dir2 = attr.position - n.position;
+				dir += normalize(dir2);
 				counter++;
+
+				float d = length(dir2);
+				if (d < min_dist) {
+					min_dist = d;
+					n.index0 = attr.bone;
+				}
 			}
 		}
 
 		if (counter > 0) {
 			dir /= counter;
 
-			Candidate c;
+			SkinnedCandidate c;
 			c.position = n.position + dir * _GrowthDistance;
 			c.node = idx;
+			c.bone = n.index0;
 			_CandidatesAppend.Append(c);
 		}
 	}
@@ -166,13 +243,15 @@ void Connect(uint3 id : SV_DispatchThreadID)
 	if (idx >= _ConnectCount)
 		return;
 
-	Candidate c = _CandidatesConsume.Consume();
+	SkinnedCandidate c = _CandidatesConsume.Consume();
 
 	uint idx1 = c.node;
-	Node n1 = _Nodes[idx1];
-	Node n2;
+	SkinnedNode n1 = _Nodes[idx1];
+	SkinnedNode n2;
 	uint idx2 = CreateNodeAndGetIdFromPool(n2);
 	n2.position = c.position;
+	n2.animated = c.position;
+	n2.index0 = c.bone;
 	n2.offset = n1.offset + 1.0;
 	n2.from = idx1;
 	n2.mass = lerp(_MassMin, _MassMax, nrand(float2(idx1, idx2)));
@@ -191,16 +270,16 @@ void Remove(uint3 id : SV_DispatchThreadID)
 	if (idx >= count)
 		return;
 
-	Attraction attr = _Attractions[idx];
+	SkinnedAttraction attr = _Attractions[idx];
 	if (!attr.active)
 		return;
-		
+
 	_Nodes.GetDimensions(count, stride);
 	for (uint i = 0; i < count; i++) {
-		Node n = _Nodes[i];
+		SkinnedNode n = _Nodes[i];
 		if (n.active) {
 			float d = distance(attr.position, n.position);
-			if (d  < _KillDistance) {
+			if (d < _KillDistance) {
 				attr.active = false;
 				_Attractions[idx] = attr;
 				return;
@@ -218,9 +297,28 @@ void Grow(uint3 id : SV_DispatchThreadID)
 	if (idx >= count)
 		return;
 
-	Node n = _Nodes[idx];
+	SkinnedNode n = _Nodes[idx];
 	if (n.active) {
 		n.t = saturate(n.t + _DT * n.mass);
 		_Nodes[idx] = n;
+	}
+}
+
+THREAD
+void Animate(uint3 id : SV_DispatchThreadID)
+{
+	uint idx = id.x;
+	uint count, stride;
+	_Nodes.GetDimensions(count, stride);
+	if (idx >= count)
+		return;
+
+	SkinnedNode node = _Nodes[idx];
+	if (node.active) {
+		float4x4 bind = _BindPoses[node.index0];
+		float4x4 m = _BoneMatrices[node.index0];
+
+		node.animated = mul(mul(m, bind), float4(node.position, 1)).xyz;
+		_Nodes[idx] = node;
 	}
 }
