@@ -1,8 +1,9 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using Common;
+using mj.gist;
 using UnityEngine.Assertions;
 using System.Runtime.InteropServices;
+using mj.gist;
 
 namespace CurlNoise {
     public class CurlNoiseFire : MonoBehaviour {

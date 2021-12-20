@@ -1,9 +1,10 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
-using Common;
+using mj.gist;
 using System.Linq;
 using UnityEngine.Assertions;
+using mj.gist;
 
 namespace StrangeAttractor {
     public abstract class StrangeAttractor : MonoBehaviour {

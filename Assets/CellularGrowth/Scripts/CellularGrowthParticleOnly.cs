@@ -1,4 +1,4 @@
-﻿using Common;
+﻿using mj.gist;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,7 +6,7 @@ using System.Linq;
 using UnityEngine;
 
 namespace CellularGrowth {
-    public class CellularGrowthParticleOnly : MonoBehaviour, ComputeShaderUser {
+    public class CellularGrowthParticleOnly : MonoBehaviour, IComputeShaderUser {
 
         [SerializeField] protected ComputeShader compute;
         [SerializeField] protected Material material;

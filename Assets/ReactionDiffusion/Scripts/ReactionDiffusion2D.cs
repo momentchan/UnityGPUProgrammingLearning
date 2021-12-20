@@ -1,13 +1,13 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using Common;
+using mj.gist;
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using UnityEngine.Rendering;
 
 namespace ReactionDiffusion {
-    public class ReactionDiffusion2D : MonoBehaviour, ComputeShaderUser {
+    public class ReactionDiffusion2D : MonoBehaviour, IComputeShaderUser {
 
         [SerializeField] protected ComputeShader cs;
         [SerializeField] protected Material mat;

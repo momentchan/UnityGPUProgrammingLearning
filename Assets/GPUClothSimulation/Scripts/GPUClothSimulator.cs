@@ -1,8 +1,8 @@
 ﻿using UnityEngine;
-using Common;
+using mj.gist;
 
 namespace GPUClothSimulation {
-    public class GPUClothSimulator : MonoBehaviour, ComputeShaderUser {
+    public class GPUClothSimulator : MonoBehaviour, IComputeShaderUser {
 
         [SerializeField] private ComputeShader cs;
         [SerializeField, Range(1, 16)] private int verletInterations = 4;

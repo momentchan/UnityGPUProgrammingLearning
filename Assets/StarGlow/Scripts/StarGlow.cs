@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-using Common;
+using mj.gist;
 using System;
 
 namespace StarGlow {

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Assertions;
-using Common;
+using mj.gist;
 
 namespace GPUBasedTrails {
 

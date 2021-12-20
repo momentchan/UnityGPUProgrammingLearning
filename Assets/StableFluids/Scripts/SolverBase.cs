@@ -4,11 +4,11 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Assertions;
 using Render;
-using Common;
+using mj.gist;
 
 namespace StableFluid {
 
-    using Common;
+    using mj.gist;
 
     // Note:
     // 1. Update velocity

@@ -1,4 +1,4 @@
-﻿using Common;
+﻿using mj.gist;
 using SpaceColonization.VolumeSampler;
 using System.Linq;
 using System.Runtime.InteropServices;
